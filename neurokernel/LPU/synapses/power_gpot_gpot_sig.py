@@ -9,7 +9,12 @@ from pycuda.compiler import SourceModule
 
 class power_gpot_gpot_sig(BaseSynapse):
 
-    def __init__(self, s_dict,synapse_state_pointer, dt, debug=False):
+    def __init__(self, s_dict, synapse_state_pointer, dt, debug=False, cuda_verbose=False):
+        if cuda_verbose:
+            self.compile_options = ['--ptxas-options=-v']
+        else:
+            self.compile_options = []
+
         self.debug = debug
         self.synapse_state_pointer = synapse_state_pointer
         self.pre = garray.to_gpu(np.asarray(s_dict['pre'], dtype = np.int32))
@@ -68,7 +73,8 @@ class power_gpot_gpot_sig(BaseSynapse):
         }
         """
         #Used 14 registers, 64 bytes cmem[0], 4 bytes cmem[16]
-        mod = SourceModule(template % {"n_synapse": self.num_synapse}, options = ["--ptxas-options=-v"])
+        mod = SourceModule(template % {"n_synapse": self.num_synapse},
+                           options=self.compile_options)
         func = mod.get_function("update_gpot_terminal_synapse")
         func.prepare('PiiiPPPPPPP')
         #[np.intp, np.int32, np.int32, np.int32, np.intp, np.intp,

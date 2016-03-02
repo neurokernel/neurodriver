@@ -7,7 +7,11 @@ import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
 class MorrisLecar_a(BaseNeuron):
-    def __init__(self, n_dict, V, dt, debug=False):
+    def __init__(self, n_dict, V, dt, debug=False, cuda_verbose=False):
+        if cuda_verbose:
+            self.compile_options = ['--ptxas-options=-v']
+        else:
+            self.compile_options = []
 
         self.num_neurons = len(n_dict['id'])
         self.dt = np.double(dt)
@@ -122,9 +126,8 @@ class MorrisLecar_a(BaseNeuron):
         self.update_grid = ((self.num_neurons - 1) / 128 + 1, 1)
         mod = SourceModule(template % {"type": dtype_to_ctype(dtype),
                            "nneu": self.update_block[0]}, 
-                           options=["--ptxas-options=-v"])
+                           options=self.compile_options)
         func = mod.get_function("hhn_euler_multiple")
-
 
         func.prepare('PPiP'+np.dtype(scalartype).char+'iPPPPPPPPPPPP')
         # [np.intp, np.intp, np.int32, np.intp, scalartype,
