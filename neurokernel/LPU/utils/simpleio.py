@@ -119,7 +119,7 @@ def write_array(A, filename, mode = 'w', title='test'):
     elif A.__class__.__name__ == 'ndarray':
         B = A
     else:
-        raise TypeError('unsupported array type")
+        raise TypeError('unsupported array type')
 
     shape = list(B.shape)
     shape[0] = 0
