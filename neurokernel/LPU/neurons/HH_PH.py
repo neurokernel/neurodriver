@@ -7,7 +7,11 @@ import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
 class HH_PH(BaseNeuron):
-    def __init__(self, n_dict, V, dt, debug=False):
+    def __init__(self, n_dict, V, dt, debug=False, cuda_verbose=False):
+        if cuda_verbose:
+            self.compile_options = ['--ptxas-options=-v']
+        else:
+            self.compile_options = []
 
         self.num_neurons = len(n_dict['id'])
         self.dt = np.double(dt)
@@ -109,7 +113,7 @@ int nsteps)
         self.update_grid = ((self.num_neurons - 1) / 128 + 1, 1)
         mod = SourceModule(template % {"type": dtype_to_ctype(dtype),
                                    "fletter": 'f' if scalartype == np.float32 else ''},
-                       options = ["--ptxas-options=-v"])
+                           options=self.compile_options)
         func = mod.get_function('hh')
         func.prepare([np.intp, np.intp, np.intp, np.intp, np.intp, np.intp,
                       np.int32, scalartype, np.int32])

@@ -56,7 +56,12 @@ __global__ void alpha_synapse(
 """
 class AlphaSynapse(BaseSynapse):
 
-    def __init__( self, s_dict, synapse_state, dt, debug=False):
+    def __init__( self, s_dict, synapse_state, dt, debug=False, cuda_verbose=False):
+        if cuda_verbose:
+            self.compile_options = ['--ptxas-options=-v']
+        else:
+            self.compile_options = []
+
         self.debug = debug
         self.dt = dt
         self.num = len( s_dict['id'] )
@@ -99,7 +104,7 @@ class AlphaSynapse(BaseSynapse):
         # cuda_src = open('./alpha_synapse.cu','r')
         mod = SourceModule( \
                 cuda_src % {"type": dtype_to_ctype(np.float64)},\
-                options=["--ptxas-options=-v"])
+                            options=self.compile_options)
         func = mod.get_function("alpha_synapse")
         func.prepare('idPPPPPPPPP')
 #                     [  np.int32,   # syn_num

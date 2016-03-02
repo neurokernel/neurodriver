@@ -37,7 +37,12 @@ __global__ void dummy_synapse(
 """
 class DummySynapse(BaseSynapse):
 
-    def __init__( self, s_dict, synapse_state, dt, debug=False):
+    def __init__(self, s_dict, synapse_state, dt, debug=False, cuda_verbose=False):
+        if cuda_verbose:
+            self.compile_options = ['--ptxas-options=-v']
+        else:
+            self.compile_options = []
+
         self.debug = debug
         #self.dt = dt
         self.num = len( s_dict['id'] )
@@ -75,7 +80,7 @@ class DummySynapse(BaseSynapse):
                               (self.num-1)/self.gpu_block[0] + 1), 1)
         mod = SourceModule( \
                 cuda_src % {"type": dtype_to_ctype(np.float64)},\
-                options=["--ptxas-options=-v"])
+                            options=self.compile_options)
         func = mod.get_function("dummy_synapse")
         func.prepare('PiiiiPPP')
 #                     [  np.intp,    # neuron state buffer

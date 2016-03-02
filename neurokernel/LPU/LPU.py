@@ -1033,19 +1033,22 @@ class LPU(Module):
             neuron = self._neuron_classes[ind](
                 n, int(int(self.spike_state.gpudata) +
                 self.spike_state.dtype.itemsize*self.idx_start_spike[i]),
-                self.dt, debug=self.debug, LPU_id=self.id)
+                self.dt, debug=self.debug, LPU_id=self.id,
+                cuda_verbose=bool(self.compile_options))
         else:
             neuron = self._neuron_classes[ind](
                 n, int(self.V.gpudata) +
                 self.V.dtype.itemsize*self.idx_start_gpot[i],
-                self.dt, debug=self.debug)
+                self.dt, debug=self.debug,
+                cuda_verbose=bool(self.compile_options))
 
         if not neuron.update_I_override:
             baseneuron.BaseNeuron.__init__(
                 neuron, n,
                 int(int(self.V.gpudata) +
                 self.V.dtype.itemsize*self.idx_start_gpot[i]),
-                self.dt, debug=self.debug, LPU_id=self.id)
+                self.dt, debug=self.debug, LPU_id=self.id,
+                cuda_verbose=bool(self.compile_options))
 
         return neuron
 
@@ -1063,7 +1066,7 @@ class LPU(Module):
         return self._synapse_classes[ind](
             s, int(int(self.synapse_state.gpudata) +
             self.synapse_state.dtype.itemsize*self.idx_start_synapse[i]),
-            self.dt, debug=self.debug)
+            self.dt, debug=self.debug, cuda_verbose=bool(self.compile_options))
 
 
     #TODO

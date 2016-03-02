@@ -52,7 +52,12 @@ __global__ void leaky_iaf(
 """
 
 class LeakyIAF(BaseNeuron):
-    def __init__(self, n_dict, spk, dt, debug=False, LPU_id=None):
+    def __init__(self, n_dict, spk, dt, debug=False, LPU_id=None, cuda_verbose=False):
+        if cuda_verbose:
+            self.compile_options = ['--ptxas-options=-v']
+        else:
+            self.compile_options = []
+
         self.num_neurons = len(n_dict['id'])
         self.dt = np.double(dt)
         self.steps = 1
@@ -129,7 +134,7 @@ class LeakyIAF(BaseNeuron):
         mod = SourceModule(
                 cuda_src % {"type": dtype_to_ctype(np.float64),
                             "nneu": self.gpu_block[0] },
-                options=["--ptxas-options=-v"])
+                options=self.compile_options)
         func = mod.get_function("leaky_iaf")
         func.prepare('idPPPPPPP')
 #                     [  np.int32,   # neu_num
@@ -265,7 +270,7 @@ class LeakyIAF(BaseNeuron):
         //can be improved
         """
         mod = SourceModule(template % {"num_neurons": self.num_neurons}, 
-                           options = ["--ptxas-options=-v"])
+                           options=self.compile_options)
         func = mod.get_function("get_input")
         func.prepare('PPPPPPP')
         #[np.intp, np.intp, np.intp, np.intp, np.intp, np.intp, np.intp])
@@ -361,7 +366,7 @@ class LeakyIAF(BaseNeuron):
         //can be improved
         """
         mod = SourceModule(template % {"num_neurons": self.num_neurons}, 
-                           options = ["--ptxas-options=-v"])
+                           options=self.compile_options)
         func = mod.get_function("get_input")
         func.prepare('PPPPP')#[np.intp, np.intp, np.intp, np.intp, np.intp])
         return func

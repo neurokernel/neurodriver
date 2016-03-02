@@ -19,7 +19,7 @@ from neurokernel.LPU.utils.simpleio import *
 class BaseNeuron(object):
     __metaclass__ = ABCMeta
 
-    def __init__(self, n_dict, neuron_state_pointer, dt, debug, LPU_id=None):
+    def __init__(self, n_dict, neuron_state_pointer, dt, debug, LPU_id=None, cuda_verbose=False):
         '''
         Every neuron class should setup GPU data structure needed
         by it during initialization. In addition, graded potential neurons
@@ -69,6 +69,11 @@ class BaseNeuron(object):
         debug is a boolean and is intended to be used for debugging purposes.
 
         '''
+        if cuda_verbose:
+            self.compile_options = ['--ptxas-options=-v']
+        else:
+            self.compile_options = []
+
         self.__LPU_id = LPU_id
         
         self.__neuron_state_pointer = neuron_state_pointer
@@ -284,7 +289,7 @@ class BaseNeuron(object):
         // can be improved
         """
         mod = SourceModule(template % {"num_neurons": self.__num_neurons}, 
-                           options = ["--ptxas-options=-v"])
+                           options=self.compile_options)
         func = mod.get_function("get_input")
         func.prepare('PPPPPPP')
         #[np.intp, np.intp, np.intp, np.intp, np.intp, np.intp, np.intp])
@@ -380,7 +385,7 @@ class BaseNeuron(object):
         //can be improved
         """
         mod = SourceModule(template % {"num_neurons": self.__num_neurons}, 
-                           options = ["--ptxas-options=-v"])
+                           options=self.compile_options)
         func = mod.get_function("get_input")
         func.prepare('PPPPP')#[np.intp, np.intp, np.intp, np.intp, np.intp])
         self.__block_get_input_I = (32, 32, 1)
