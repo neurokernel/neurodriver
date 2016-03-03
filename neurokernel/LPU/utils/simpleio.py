@@ -4,142 +4,104 @@
 Routines for reading/writing numpy arrays from/to HDF5 files.
 """
 
-import tables
+import numbers
+
+import h5py
 import numpy as np
 
-def write_memory_to_file(A, filename, mode='w', title='test'):
+def dataset_append(dataset, arr):
     """
-    Write numpy array to HDF5 file.
-
-    Writes numpy array containing numerical data to HDF5 file.
-    Real arrays are stored in '/real'; if `A` is complex,
-    its imaginary portion is stored in '/imag'.
+    Append an array to an h5py dataset.
 
     Parameters
     ----------
-    A : numpy.ndarray, pycuda.gpuarray.GPUArray, parray.PitchArray
+    dataset : h5py.Dataset
+        Dataset to extend. Must be resizable in its first dimension.
+    arr : numpy.ndarray
+        Array to append. All dimensions of `arr` other than the first 
+        dimension must be the same as those of the dataset.        
+    """
+    
+    assert isinstance(dataset, h5py.Dataset)
+    assert isinstance(arr, np.ndarray)
+
+    # Save leading dimension of stored array:
+    maxshape = list(dataset.shape)
+    old_ld_dim = maxshape[0]
+
+    # Extend leading dimension of stored array to accommodate new array:
+    maxshape[0] += arr.shape[0]
+    dataset.resize(maxshape)
+
+    # Compute slices to use when assigning `arr` to array extension:
+    slices = [slice(old_ld_dim, None)]
+    for s in maxshape[1:]:
+        slices.append(slice(None, None))
+
+    # Convert list of slices to tuple because __setitem__ can 
+    # only handle "simple" indexes:
+    slices = tuple(slices)
+    dataset.__setitem__(slices, arr)        
+
+def write_array(arr, filename, mode='w', complevel=0):
+    """
+    Write numpy array containing numerical data to HDF5 file.
+
+    Parameters
+    ----------
+    arr : numpy.ndarray, pycuda.gpuarray.GPUArray, parray.PitchArray
         Array to store. Must contain numerical data.
-    filename: store
-        Output file name.
+    filename: str
+        HDF5 file to write.
     mode : str
         Mode to use when opening file. 'w' creates a new file,
-        'a' appends to an existing file. If appending, the leading
-        dimension of A must be the same as the array in the
-        existing file.
-    title : str
-        File title.
+        'a' appends to the dataset in an existing file. If appending, 
+        all dimensions of `arr` other than the first dimension must be the same        
+        as those of the existing dataset.
+    complevel : int
+        Compression level. Must be between 0 and 10.
 
     Notes
     -----
     Files written with this routine can be opened in MATLAB using
-    the `h5read` function.
+    the `h5read` function (although complex values will be returned
+    as a structure containing a real array and imaginary array).
 
     See Also
     --------
-    read_file
+    read_array
     """
 
-    h5file = tables.openFile(filename, mode, title)
-
-    if (A.dtype == np.float32) or (A.dtype == np.complex64):
-        tb = tables.Float32Atom
-    elif (A.dtype == np.float64) or (A.dtype == np.complex128):
-        tb = tables.Float64Atom
-    elif A.dtype == np.int32:
-        tb = tables.Int32Atom
-    elif A.dtype == np.int64:
-        tb = tables.Int64Atom
-    else:
+    if arr.__class__.__name__ in ['GPUArray', 'PitchArray']:
+        arr = arr.get()
+    elif not isinstance(arr, np.ndarray):
+        TypeError('unsupported array type')
+    if not issubclass(arr.dtype.type, numbers.Number):
         TypeError('unsupported array dtype')
 
-    # This avoids having to explicitly import pycuda or parray:
-    if A.__class__.__name__ in ['GPUArray', 'PitchArray']:
-        B = A.get()
-    elif A.__class__.__name__ == 'ndarray':
-        B = A
+    h5file = h5py.File(filename, mode)    
+    if mode == 'w' or (mode == 'a' and 'array' not in h5file.keys()):
+        # Set leading dimension to None to enable the created array to be 
+        # resized:
+        maxshape = list(arr.shape)
+        maxshape[0] = None
+        h5file.create_dataset('/array', data=arr, maxshape=maxshape,
+                              compression=complevel)
+    elif mode == 'a':
+        dataset_append(h5file['/array'], arr)
     else:
-        raise TypeError('unsupported array type')
-
-    shape = list(B.shape)
-    shape[0] = 0
-
-    if mode == 'w':
-        if np.iscomplexobj(B):
-            h5file.createEArray("/", "real", tb(), tuple(shape))
-            h5file.createEArray("/", "imag", tb(), tuple(shape))
-        else:
-            h5file.createEArray("/", "real", tb(), tuple(shape))
-
-    if np.iscomplexobj(B):
-        h5file.root.real.append(B.real)
-        h5file.root.imag.append(B.imag)
-    else:
-        h5file.root.real.append(B)
+        RuntimeError('invalid mode')
 
     h5file.close()
 
-    if mode == 'w':
-        print "file %s created" % (filename)
-
-def write_array(A, filename, mode = 'w', title='test'):
+def read_array(filename):
     """
-    write array to a h5 file
-    h5 file contains root.array(A real or complex)
+    Read numpy array containing numerical data from HDF5 file.
 
-    A: a ndarray, GPUArray or PitchArray
-    filename: name of file to store
-    mode: 'w' to start a new file
-          'a' to append, leading dimension of A must be
-            the same as the existing file
-
-    file can be read by read_array in python
-    """
-
-    h5file = tables.openFile(filename, mode, title)
-
-    if (A.dtype == np.float32):
-        tb = tables.Float32Atom
-    elif (A.dtype == np.float64):
-        tb = tables.Float64Atom
-
-    # FIXME: Does not work because ComplexAtom requires
-    #  at least 1 argument and fails later. Non named argument
-    #  is the itemsize: 8 single precision 16 double
-    #elif (A.dtype == np.complex64) or (A.dtype == np.complex128):
-    #    tb = tables.ComplexAtom
-    elif A.dtype == np.int32:
-        tb = tables.Int32Atom
-    elif A.dtype == np.int64:
-        tb = tables.Int64Atom
-    else:
-        TypeError('unsupported array dtype')
-
-    if A.__class__.__name__ in ['GPUArray', 'PitchArray']:
-        B = A.get()
-    elif A.__class__.__name__ == 'ndarray':
-        B = A
-    else:
-        raise TypeError('unsupported array type')
-
-    shape = list(B.shape)
-    shape[0] = 0
-
-    if mode == 'w':
-        h5file.createEArray("/","array", tb(), tuple(shape))
-
-    h5file.root.array.append(B)
-
-    h5file.close()
-    if mode == 'w':
-        print "file %s created" % (filename)
-
-def read_file(filename):
-    """
-    Read numpy array from HDF5 file.
-
-    Reads numerical data from HDF5 file into a numpy array.
-    Real arrays are assumed to be stored in '/real'; if `A` is complex,
-    its imaginary portion are assumed to be stored in '/imag'.
+    Parameters
+    ----------
+    filename : str
+        HDF5 file to read.
 
     Returns
     -------
@@ -148,36 +110,15 @@ def read_file(filename):
 
     Notes
     -----
-    Files written with `write_memory_to_file` or MATLAB's `h5write` function can
+    Files written with `write_array` or MATLAB's `h5write` function can
     be read with this routine.
 
     See Also
     --------
-    write_memory_to_file
+    write_array
     """
 
-    h5file = tables.openFile(filename, "r")
-    n = h5file.root._v_nchildren
-
-    if n == 1:
-        a = h5file.root.real.read()
-    elif n == 2:
-        a = h5file.root.real.read() + \
-            (np.array(1j).astype(np.complex64))*h5file.root.imag.read()
-
+    h5file = h5py.File(filename, 'r')
+    result = h5file['/array'][:]
     h5file.close()
-
-    return a
-
-def read_array(filename):
-    """
-    read a h5 file generated by write_array
-    returns a ndarray
-    """
-
-    h5file = tables.openFile(filename, "r")
-
-    a = h5file.root.array.read()
-    h5file.close()
-
-    return a
+    return result
