@@ -15,6 +15,7 @@ import pycuda.elementwise as elementwise
 
 import numpy as np
 import networkx as nx
+import tables
 
 # Work around bug in networkx < 1.9 that causes networkx to choke on GEXF
 # files with boolean attributes that contain the strings 'True' or 'False'
