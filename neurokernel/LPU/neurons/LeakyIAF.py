@@ -99,12 +99,16 @@ class LeakyIAF(BaseNeuron):
         if self.debug:
             if self.LPU_id is None:
                 self.LPU_id = "anon"
-            self.I_file = tables.openFile(self.LPU_id + "_I.h5", mode="w")
-            self.I_file.createEArray("/","array",
-                                     tables.Float64Atom(), (0,self.num_neurons))
-            self.V_file = tables.openFile(self.LPU_id + "_V.h5", mode="w")
-            self.V_file.createEArray("/","array",
-                                     tables.Float64Atom(), (0,self.num_neurons))
+            self.I_file = h5py.File(self.LPU_id+"_I.h5", "w")
+            self.I_file.create_dataset('/array',
+                                       (0, self.num_neurons),
+                                       dtype=np.float64,
+                                       maxshape=(None, self.num_neurons))
+            self.V_file = h5py.File(self.LPU_id+"_V.h5", "w")
+            self.V_file.create_dataset('/array',
+                                       (0, self.num_neurons),
+                                       dtype=np.float64,
+                                       maxshape=(None, self.num_neurons))
     @property
     def neuron_class(self): return True
 
@@ -123,9 +127,8 @@ class LeakyIAF(BaseNeuron):
             self.R.gpudata,
             self.C.gpudata)
         if self.debug:
-            self.I_file.root.array.append(self.I.get().reshape((1, -1)))
-            self.V_file.root.array.append(self.V.get().reshape((1, -1)))
-            
+            dataset_append(self.I_file['/array'], self.I.get().reshape((1, -1)))
+            dataset_append(self.V_file['/array'], self.V.get().reshape((1, -1)))
 
     def get_gpu_kernel( self):
         self.gpu_block = (128, 1, 1)

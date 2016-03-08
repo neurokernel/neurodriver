@@ -15,7 +15,6 @@ import pycuda.elementwise as elementwise
 
 import numpy as np
 import networkx as nx
-import tables
 
 # Work around bug in networkx < 1.9 that causes networkx to choke on GEXF
 # files with boolean attributes that contain the strings 'True' or 'False'
@@ -733,13 +732,13 @@ class LPU(Module):
 
         if self.debug:
             if self.total_num_gpot_neurons > 0:
-                self.gpot_buffer_file.root.array.append(
-                    self.buffer.gpot_buffer.get()
-                        .reshape(1, self.gpot_delay_steps, -1))
+                dataset_append(self.gpot_buffer_file['/array'],
+                               self.buffer.gpot_buffer.get()
+                               .reshape(1, self.gpot_delay_steps, -1))
             
             if self.total_synapses + len(self.input_neuron_list) > 0:
-                self.synapse_state_file.root.array.append(
-                    self.synapse_state.get().reshape(1, -1))
+                dataset_append(self.synapse_state_file['/array'],
+                               self.synapse_state.get().reshape(1, -1))
 
         self._extract_output()
 
@@ -759,13 +758,12 @@ class LPU(Module):
                                     self.total_num_spike_neurons,
                                     self.spike_delay_steps)
         if self.input_file:
-            self.input_h5file = tables.openFile(self.input_file)
+            self.input_h5file = h5py.File(self.input_file, 'r')
 
             self.file_pointer = 0
-            self.I_ext = parray.to_gpu(self.input_h5file.root.array.read(
-                                       self.file_pointer,
-                                       self.file_pointer +
-                                       self._one_time_import))
+            self.I_ext = \
+                parray.to_gpu(self.input_h5file['/array'][self.file_pointer:
+                                                          self.file_pointer+self._one_time_import])
             self.file_pointer += self._one_time_import
             self.frame_count = 0
             self.frames_in_buffer = self._one_time_import
@@ -779,19 +777,19 @@ class LPU(Module):
                 ext = 'h5'
 
             if self.total_num_gpot_neurons > 0:
-                self.output_gpot_file = tables.openFile(filename +
-                                                        '_gpot.' + ext, 'w')
-                self.output_gpot_file.createEArray(
-                    "/", "array",
-                    tables.Float64Atom(),
-                    (0, self.total_num_gpot_neurons))
+                self.output_gpot_file = h5py.File(filename+'_gpot.'+ext, 'w')
+                self.output_gpot_file.create_dataset(
+                    '/array',
+                    (0, self.total_num_gpot_neurons),
+                    dtype=np.float64,
+                    maxshape=(None, self.total_num_gpot_neurons))
             if self.total_num_spike_neurons > 0:
-                self.output_spike_file = tables.openFile(filename +
-                                                         '_spike.' + ext, 'w')
-                self.output_spike_file.createEArray(
-                    "/", "array",
-                    tables.Float64Atom(),
-                    (0, self.total_num_spike_neurons))
+                self.output_spike_file = h5py.File(filename+'_spike.'+ext, 'w')
+                self.output_spike_file.create_dataset(
+                    '/array',
+                    (0, self.total_num_spike_neurons),
+                    dtype=np.float64,
+                    maxshape=(None, self.total_num_spike_neurons))
 
         if self.debug:
             '''
@@ -799,26 +797,29 @@ class LPU(Module):
             for (key, i) in self.other_lpu_map.iteritems():
                 num = self.num_input_gpot_neurons[i]
                 if num>0:
-                    self.in_gpot_files[key] = tables.openFile(filename + \
-                                                    key + '_in_gpot.' + ext , 'w')
-                    self.in_gpot_files[key].createEArray("/", "array", \
-                                                        tables.Float64Atom(), (0, num))
+                    self.in_gpot_files[key] = \
+                        h5py.File(filename+key+'_in_gpot.'+ext, 'w')
+                    self.in_gpot_files[key].create_dataset('/array',
+                                                           (0, num),
+                                                           dtype=np.float64,
+                                                           maxshape=(None, num))
 
             '''
             if self.total_num_gpot_neurons > 0:
-                self.gpot_buffer_file = tables.openFile(self.id + '_buffer.h5','w')
-                self.gpot_buffer_file.createEArray(
-                    "/", "array",
-                    tables.Float64Atom(), 
-                    (0, self.gpot_delay_steps, self.total_num_gpot_neurons))
+                self.gpot_buffer_file = h5py.File(self.id + '_buffer.h5', 'w')
+                self.gpot_buffer_file.create_dataset(
+                    '/array',
+                    (0, self.gpot_delay_steps, self.total_num_gpot_neurons),
+                    dtype=np.float64,
+                    maxshape=(None, self.gpot_delay_steps, self.total_num_gpot_neurons))
 
             if self.total_synapses + len(self.input_neuron_list) > 0:
-                self.synapse_state_file = tables.openFile(self.id + '_synapses.h5',
-                                                          'w')
-                self.synapse_state_file.createEArray(
-                    "/", "array",
-                    tables.Float64Atom(), 
-                    (0, self.total_synapses + len(self.input_neuron_list)))
+                self.synapse_state_file = h5py.File(self.id + '_synapses.h5', 'w')                                                    
+                self.synapse_state_file.create_dataset(
+                    '/array',
+                    (0, self.total_synapses + len(self.input_neuron_list)),
+                    dtype=np.float64,
+                    maxshape=(None, self.total_synapses + len(self.input_neuron_list)))
 
     def _initialize_gpu_ds(self):
         """
@@ -918,11 +919,11 @@ class LPU(Module):
         """
 
         if self.total_num_gpot_neurons > 0:
-            self.output_gpot_file.root.array.append(
-                self.V.get()[self.gpot_order_l].reshape((1, -1)))
+            dataset_append(self.output_gpot_file['/array'],                                  
+                           self.V.get()[self.gpot_order_l].reshape((1, -1)))
         if self.total_num_spike_neurons > 0:
-            self.output_spike_file.root.array.append(
-                self.spike_state.get()[self.spike_order_l].reshape((1, -1)))
+            dataset_append(self.output_spike_file['/array'],
+                           self.spike_state.get()[self.spike_order_l].reshape((1, -1)))
 
     def _read_external_input(self):
         # if eof not reached or there are frames in buffer not read
@@ -940,14 +941,12 @@ class LPU(Module):
                           'Subsequent behaviour is undefined.')
         # if all buffer frames were read, read from file
         if self.frame_count >= self._one_time_import and not self.input_eof:
-            input_ld = self.input_h5file.root.array.shape[0]
+            input_ld = self.input_h5file['/array'].shape[0]
             if input_ld - self.file_pointer < self._one_time_import:
-                h_ext = self.input_h5file.root.array.read(self.file_pointer,
-                                                          input_ld)
+                h_ext = self.input_h5file['/array'][self.file_pointer:input_ld]                                                          
             else:
-                h_ext = self.input_h5file.root.array.read(
-                    self.file_pointer,
-                    self.file_pointer + self._one_time_import)
+                h_ext = self.input_h5file['/array'][self.file_pointer:                    
+                    self.file_pointer+self._one_time_import]
             if h_ext.shape[0] == self.I_ext.shape[0]:
                 self.I_ext.set(h_ext)
                 self.file_pointer += self._one_time_import
@@ -960,7 +959,7 @@ class LPU(Module):
                 self.I_ext.set(h_ext)
                 self.file_pointer = input_ld
 
-            if self.file_pointer == self.input_h5file.root.array.shape[0]:
+            if self.file_pointer == self.input_h5file['/array'].shape[0]:
                 self.input_eof = True
 
     #TODO

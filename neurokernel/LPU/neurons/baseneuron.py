@@ -119,9 +119,11 @@ class BaseNeuron(object):
             i = 0
             while os.path.isfile(self.__LPU_id + "_I_" + self.__class__.__name__ + str(i) + ".h5"):
                 i+=1
-            self.__I_file = tables.openFile(self.__LPU_id + "_I_" +  self.__class__.__name__ +  str(i) + ".h5", mode="w")
-            self.__I_file.createEArray("/","array", \
-                                     tables.Float64Atom(), (0,self.num_neurons))
+            self.__I_file = h5py.File(self.__LPU_id+"_I_"+ self.__class__.__name__+ str(i)+".h5", "w")
+            self.__I_file.create_dataset('/array',
+                                         (0, self.num_neurons),
+                                         dtype=np.float64,
+                                         maxshape=(None, self.num_neurons))
             
     @abstractmethod
     def eval(self):
@@ -179,8 +181,7 @@ class BaseNeuron(object):
                 self.I.gpudata, int(self.__neuron_state_pointer),
                 self.__V_rev.gpudata)
         if self.debug:
-            self.__I_file.root.array.append(self.I.get().reshape((1, -1)))
-
+            dataset_append(self.__I_file['/array'], self.I.get().reshape((1, -1)))
 
     def post_run(self):
         '''
