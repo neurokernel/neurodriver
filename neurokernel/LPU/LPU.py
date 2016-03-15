@@ -911,6 +911,10 @@ class LPU(Module):
     set_inds.cache = {}
 
     def _extract_output(self, st=None):
+        """
+        Extract membrane voltages and spike states and store them in data arrays
+        of LPU's port maps.
+        """
         if len(self.out_ports_ids_gpot) > 0:
             self._extract_gpot.prepared_async_call(
                 self.grid_extract_gpot,
@@ -943,8 +947,9 @@ class LPU(Module):
                            self.spike_state.get()[self.spike_order_l].reshape((1, -1)))
 
     def _read_external_input(self):
-        # if eof not reached or there are frames in buffer not read
-        # copy the input from buffer to synapse state array
+        # If the end of the input file has not been reached or there are still
+        # unread frames in the buffer, copy the input from buffer to synapse
+        # state array:
         if not self.input_eof or self.frame_count < self.frames_in_buffer:
             cuda.memcpy_dtod(
                 int(int(self.synapse_state.gpudata) +
@@ -957,7 +962,8 @@ class LPU(Module):
             self.log_info('Input end of file reached. '
                           'Subsequent behaviour is undefined.')
 
-        # if all buffer frames were read, read from file
+        # If all frames have read from the buffer, replenish the buffer from the
+        # input file:
         if self.frame_count >= self._one_time_import and not self.input_eof:
             input_ld = self.input_h5file['/array'].shape[0]
             if input_ld - self.file_pointer < self._one_time_import:
@@ -980,8 +986,10 @@ class LPU(Module):
             if self.file_pointer == self.input_h5file['/array'].shape[0]:
                 self.input_eof = True
 
-    #TODO
     def _update_buffer(self):
+        """
+        Update circular buffer of past neuron states.
+        """
         if self.total_num_gpot_neurons>0:
             cuda.memcpy_dtod(int(self.buffer.gpot_buffer.gpudata) +
                 self.buffer.gpot_current*self.buffer.gpot_buffer.ld*
@@ -994,21 +1002,30 @@ class LPU(Module):
                 self.spike_state.gpudata,
                 int(self.spike_state.dtype.itemsize*self.total_num_spike_neurons))
 
-    #TODO
     def _extract_projection_gpot_func(self):
+        """
+        Create function for extracting graded potential neuron states.
+        """
         self.grid_extract_gpot = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
                                       (self.num_public_gpot-1) / 256 + 1),
                                   1)
         return self._extract_projection_func(self.V)
 
-    #TODO
     def _extract_projection_spike_func(self):
+        """
+        Create function for extracting spiking neuron states.
+        """
+
        self.grid_extract_spike = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
                                       (self.num_public_spike-1) / 256 + 1),
                                   1)
        return self._extract_projection_func(self.spike_state)
 
     def _extract_projection_func(self, state_var):
+        """
+        PyCUDA function for copying entries from one GPUArray into another.
+        """
+
         template = """
         __global__ void extract_projection(%(type)s* all_V,
                                            %(type)s* projection_V,
