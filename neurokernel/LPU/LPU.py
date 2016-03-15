@@ -131,15 +131,14 @@ class LPU(Module):
         Input data should be validated.
         """
 
-        # parse neuron data
         n_dict = {}
 
         # Cast node IDs to str in case they are ints so that the conditional
         # below doesn't fail:
         neurons = [x for x in graph.node.items() if 'synapse' not in str(x[0])]
 
-        # sort based on id (id is first converted to an integer)
-        # this is done so that consecutive neurons of the same type
+        # Sort neurons based on id (where the id is first converted to an
+        # integer). This is done so that consecutive neurons of the same type
         # in the constructed LPU is the same in neurokernel
         neurons.sort(cmp=neuron_cmp)
         for id, neu in neurons:
@@ -339,7 +338,7 @@ class LPU(Module):
                  cuda_verbose=False, time_sync=False):
 
         LoggerMixin.__init__(self, 'mod {}'.format(id))
-        
+
         assert('io' in columns)
         assert('type' in columns)
         assert('interface' in columns)
@@ -375,22 +374,18 @@ class LPU(Module):
 
         # Number of neurons of each model:
         n_model_num = [ len(n['id']) for _, n in self.n_list ]
-        
-        
+
         # Concatenate lists of integers corresponding to neuron positions in LPU
         # graph for all of the models into a single list:
         n_id = np.array(sum( [ n['id'] for _, n in self.n_list ], []),
                         dtype=np.int32)
-        
+
         # Concatenate lists of common attributes in model dictionaries into
         # single lists:
         n_is_spk = np.array(sum( [ n['spiking'] for _, n in self.n_list ], []))
         n_is_pub = np.array(sum( [ n['public'] for _, n in self.n_list ], []))
         n_has_in = np.array(sum( [ n['extern'] for _, n in self.n_list ], []))
 
-        
-        
-        
         # Get selectors and positions of input ports:
         try:
             sel_in_gpot = self.extract_in_gpot(n_dict)
@@ -431,7 +426,7 @@ class LPU(Module):
         self.sel_out_spk = sel_out_spk
         self.sel_in_gpot = sel_in_gpot
         self.sel_out_gpot = sel_out_gpot
-        
+
         # TODO: Update the following comment
         # The following code creates a mapping for each neuron from its "id" to
         # its position on the gpu array. The gpu array is arranged as follows,
@@ -476,13 +471,13 @@ class LPU(Module):
         self.gpot_order_dict = {}
         for i,id in enumerate(gpot_idx):
             self.gpot_order_dict[id] = i
-        
+
         spike_order = np.argsort(spike_idx).astype(np.int32)
         self.spike_order_l = spike_order
         self.spike_order_dict= {}
         for i,id in enumerate(spike_idx):
             self.spike_order_dict[id] = i
-        
+
         self.spike_shift = self.total_num_gpot_neurons
         in_id = n_id[n_has_in]
         in_id.sort()
@@ -517,8 +512,9 @@ class LPU(Module):
         num_synapses = [ len(s['id']) for _, s in self.s_list ]
         for (_, s) in self.s_list:
             cls = s['class'][0]
-            s['pre'] = [ self.spike_order(int(nid)) if cls <= 1 else self.gpot_order(int(nid)) 
+            s['pre'] = [ self.spike_order(int(nid)) if cls <= 1 else self.gpot_order(int(nid))
                          for nid in s['pre'] ]
+
             # why don't why need shift for post neuron?
             # For synapses whose post-synaptic site is another synapse, we set
             # its post-id to be max_neuron_id + synapse_id. By doing so, we
@@ -531,19 +527,20 @@ class LPU(Module):
             for k, v in s.items():
                 s[k] = np.asarray(v)[order]
 
-            # NOTE: a computational model of synapse could be either
-            # conductance based or non-conducatance based under the same set of
-            # ODEs. If the EPSC comes directly from one of the state variables,
-            # the model is non-conductacne. Otherwise, if the calculation of
-            # EPSC involves reverse potential, the model is recognized as
+            # The same set of ODEs may be used to describe conductance-based and
+            # non-conductance-based versions of a synapse model 
+            # If the EPSC comes directly from one of the state variables,
+            # the model is non-conductance-based. If the calculation of the
+            # EPSC involves a reverse potential, the model is
             # conductance based.
-
             idx = np.where(s['conductance'])[0]
             if len(idx) > 0:
                  cond_post.extend(s['post'][idx])
                  reverse.extend(s['reverse'][idx])
                  cond_pre.extend(range(count, count+len(idx)))
                  count += len(idx)
+
+                 # Set the delay to either the specified value or 0:
                  if 'delay' in s:
                      max_del = np.max( s['delay'][idx] )
                      gpot_delay_steps = max_del if max_del > gpot_delay_steps \
@@ -554,6 +551,8 @@ class LPU(Module):
                  I_post.extend(s['post'][idx])
                  I_pre.extend(range(count, count+len(s['post'][idx])))
                  count += len(s['post'])
+
+                 # Set the delay to either the specified value or 0:
                  if 'delay' in s:
                      max_del = np.max( s['delay'][idx] )
                      spike_delay_steps = max_del if max_del > spike_delay_steps \
@@ -573,7 +572,6 @@ class LPU(Module):
         cond_pre = cond_pre[order1]
         reverse = reverse[order1]
 
-
         I_post = np.asarray(I_post, dtype=np.int32)
         I_pre = np.asarray(I_pre, dtype=np.int32)
 
@@ -591,7 +589,6 @@ class LPU(Module):
             (np.asarray([0,], dtype=np.int32),
              np.cumsum(num_synapses, dtype=np.int32)))
 
-
         for i, (t, n) in enumerate(self.n_list):
             if n['spiking'][0]:
                 idx = np.where(
@@ -599,6 +596,8 @@ class LPU(Module):
                     (cond_post < self.idx_start_spike[i+1] + self.spike_shift) )
                 n['cond_post'] = cond_post[idx] - self.idx_start_spike[i] - self.spike_shift
                 n['cond_pre'] = cond_pre[idx]
+
+                # Save reverse potential from synapses in neuron data dict:
                 n['reverse'] = reverse[idx]
                 idx = np.where(
                     (I_post >= self.idx_start_spike[i] + self.spike_shift)&
@@ -610,6 +609,8 @@ class LPU(Module):
                                 (cond_post < self.idx_start_gpot[i+1]) )
                 n['cond_post'] = cond_post[idx] - self.idx_start_gpot[i]
                 n['cond_pre'] = cond_pre[idx]
+
+                # Save reverse potential from synapses in neuron data dict:
                 n['reverse'] = reverse[idx]
                 idx =  np.where( (I_post >= self.idx_start_gpot[i])&
                                  (I_post < self.idx_start_gpot[i+1]) )
@@ -623,7 +624,7 @@ class LPU(Module):
             s_id = np.concatenate([s['id'] for _, s in self.s_list]).astype(np.int32)
         else:
             s_id = np.empty(0, dtype = np.int32)
-        
+
         s_order = np.arange(self.total_synapses)[s_id]
         idx = np.where(cond_post >= self.nid_max)[0]
         cond_post_syn = s_order[cond_post[idx] - self.nid_max]
@@ -735,7 +736,7 @@ class LPU(Module):
                 dataset_append(self.gpot_buffer_file['/array'],
                                self.buffer.gpot_buffer.get()
                                .reshape(1, self.gpot_delay_steps, -1))
-            
+
             if self.total_synapses + len(self.input_neuron_list) > 0:
                 dataset_append(self.synapse_state_file['/array'],
                                self.synapse_state.get().reshape(1, -1))
@@ -814,7 +815,7 @@ class LPU(Module):
                     maxshape=(None, self.gpot_delay_steps, self.total_num_gpot_neurons))
 
             if self.total_synapses + len(self.input_neuron_list) > 0:
-                self.synapse_state_file = h5py.File(self.id + '_synapses.h5', 'w')                                                    
+                self.synapse_state_file = h5py.File(self.id + '_synapses.h5', 'w')
                 self.synapse_state_file.create_dataset(
                     '/array',
                     (0, self.total_synapses + len(self.input_neuron_list)),
@@ -869,7 +870,7 @@ class LPU(Module):
         """
 
         if self.ports_in_gpot_mem_ind is not None:
-            self.set_inds(self.pm['gpot'].data, self.V, self.inds_gpot, 
+            self.set_inds(self.pm['gpot'].data, self.V, self.inds_gpot,
                           self.idx_start_gpot[self.ports_in_gpot_mem_ind])
         if self.ports_in_spk_mem_ind is not None:
             self.set_inds(self.pm['spike'].data, self.spike_state,
@@ -886,7 +887,7 @@ class LPU(Module):
             v = "{data_ctype} *dest, {inds_ctype} *inds, {data_ctype} *src"\
                 .format(data_ctype=data_ctype,
                         inds_ctype=inds_ctype)
-            func = elementwise.ElementwiseKernel(v, 
+            func = elementwise.ElementwiseKernel(v,
                                                  "dest[i+%i] = src[inds[i]]" % dest_shift)
             self.set_inds.cache[(inds.dtype, dest_shift)] = func
         func(dest, inds, src, range=slice(0, len(inds), 1) )
@@ -919,7 +920,7 @@ class LPU(Module):
         """
 
         if self.total_num_gpot_neurons > 0:
-            dataset_append(self.output_gpot_file['/array'],                                  
+            dataset_append(self.output_gpot_file['/array'],
                            self.V.get()[self.gpot_order_l].reshape((1, -1)))
         if self.total_num_spike_neurons > 0:
             dataset_append(self.output_spike_file['/array'],
@@ -939,13 +940,14 @@ class LPU(Module):
         else:
             self.log_info('Input end of file reached. '
                           'Subsequent behaviour is undefined.')
+
         # if all buffer frames were read, read from file
         if self.frame_count >= self._one_time_import and not self.input_eof:
             input_ld = self.input_h5file['/array'].shape[0]
             if input_ld - self.file_pointer < self._one_time_import:
-                h_ext = self.input_h5file['/array'][self.file_pointer:input_ld]                                                          
+                h_ext = self.input_h5file['/array'][self.file_pointer:input_ld]
             else:
-                h_ext = self.input_h5file['/array'][self.file_pointer:                    
+                h_ext = self.input_h5file['/array'][self.file_pointer:
                     self.file_pointer+self._one_time_import]
             if h_ext.shape[0] == self.I_ext.shape[0]:
                 self.I_ext.set(h_ext)
@@ -979,7 +981,7 @@ class LPU(Module):
     #TODO
     def _extract_projection_gpot_func(self):
         self.grid_extract_gpot = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
-                                      (self.num_public_gpot-1) / 256 + 1), 
+                                      (self.num_public_gpot-1) / 256 + 1),
                                   1)
         return self._extract_projection_func(self.V)
 
@@ -1018,8 +1020,20 @@ class LPU(Module):
 
         return func
 
-    #TODO
     def _instantiate_neuron(self, i, t, n):
+        """
+        Instantiate neuron model class.
+
+        Parameters
+        ----------
+        i : int
+            Index of starting neuron's state.
+        t : str
+            Name of neuron model class to instantiate.
+        s : dict
+            Dictionary of neuron parameters.
+        """
+
         try:
             ind = self._neuron_names.index(t)
         except:
@@ -1052,8 +1066,20 @@ class LPU(Module):
 
         return neuron
 
-    #TODO
     def _instantiate_synapse(self, i, t, s):
+        """
+        Instantiate synapse model class.
+
+        Parameters
+        ----------
+        i : int
+            Index of starting synapse's state.
+        t : str
+            Name of synapse model class to instantiate.
+        s : dict
+            Dictionary of synapse parameters.
+        """
+
         try:
             ind = self._synapse_names.index(t)
         except:
@@ -1068,14 +1094,19 @@ class LPU(Module):
             self.synapse_state.dtype.itemsize*self.idx_start_synapse[i]),
             self.dt, debug=self.debug, cuda_verbose=bool(self.compile_options))
 
-
-    #TODO
     def _load_neurons(self):
+        """
+        Load all available neuron models.
+        """
+
         self._neuron_classes = baseneuron.BaseNeuron.__subclasses__()
         self._neuron_names = [cls.__name__ for cls in self._neuron_classes]
 
-    #TODO
     def _load_synapses(self):
+        """
+        Load all available synapse models.
+        """
+
         self._synapse_classes = basesynapse.BaseSynapse.__subclasses__()
         self._synapse_names = [cls.__name__ for cls in self._synapse_classes]
 
@@ -1102,7 +1133,7 @@ def neuron_cmp(x, y):
             return 1
         else:
             return 0
-        
+ 
 def synapse_cmp(x, y):
     """
     post-synaptic cite might be another synapse, with convention 'synapse-id'.
@@ -1125,11 +1156,36 @@ def synapse_cmp(x, y):
         else:
             return 0
 
-class CircularArray:
+class CircularArray(object):
     """
-    This class implements a circular buffer to support synapses with delays.
-    Please refer the documentation of the template synapse class on information
-    on how to access data correctly from this buffer
+    Circular buffer to support synapses with delays.
+
+    Parameters
+    ----------
+    num_gpot_neurons : int
+        Number of graded potential neurons to accomodate.
+    gpot_delay_steps : int
+        Number of steps into the past to buffer graded potential neuron states.
+    num_spike_neurons : int
+        Number of spiking neurons to accomodate.
+    spike_delay_steps : int
+        Number of steps into the past to buffer spiking neuron values.
+    rest : pycuda.gpuarray.GPUArray
+        Initial graded potential neuron state values to buffer.
+
+    Attributes
+    ----------
+    num_gpot_neurons, num_spike_neurons : int
+        Numbers of neurons.
+    gpot_current, spike_current : int
+        Current graded potential or spiking neuron index in buffer.
+    gpot_buffer, spike_buffer : parray.PitchArray
+        Buffered neuron values.
+
+    Methods
+    -------
+    step()
+        Advance indices of current graded potential and spiking neuron values.
     """
 
     def __init__(self, num_gpot_neurons,  gpot_delay_steps,
@@ -1158,6 +1214,10 @@ class CircularArray:
             self.spike_current = 0
 
     def step(self):
+        """
+        Advance indices of current graded potential and spiking neuron values.
+        """
+
         if self.num_gpot_neurons > 0:
             self.gpot_current += 1
             if self.gpot_current >= self.gpot_delay_steps:
