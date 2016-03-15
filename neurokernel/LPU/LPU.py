@@ -70,6 +70,19 @@ class LPU(Module):
         for debugging purposes. False by default.
     cuda_verbose : boolean
         If True, compile kernels with option '--ptxas-options=-v'.
+
+    Attributes
+    ----------
+    buffer : CircularArray
+        Buffer containing past neuron states.
+    synapse_state : pycuda.gpuarray.GPUArray
+        Synapse states.
+    gpot_buffer_file : h5py.File
+        If `debug` is true, the contents of `buffer.gpot_buffer` are
+        saved at every step.
+    synapse_state_file : h5py.File
+        If `debug` is true, the contents of `buffer.gpot_buffer` are
+        saved at every step.
     """
 
     @staticmethod
@@ -827,6 +840,9 @@ class LPU(Module):
         Setup GPU arrays.
         """
 
+        # The length of this array must include space for neurons that receive
+        # input because they are treated as synapses that emit a current
+        # added to the postsynaptic neurons:
         self.synapse_state = garray.zeros(
             max(int(self.total_synapses) + len(self.input_neuron_list), 1),
             np.float64)
