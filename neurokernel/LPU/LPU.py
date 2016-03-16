@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 
 """
-Local Processing Unit (LPU) draft implementation.
+Local Processing Unit (LPU) with plugin support for various neuron/synapse models.
 """
+
 import pdb
 import collections
 import numbers
@@ -26,6 +27,7 @@ nx.readwrite.gexf.GEXF.convert_bool['True'] = True
 
 from neurokernel.mixins import LoggerMixin
 from neurokernel.core_gpu import Module, CTRL_TAG, GPOT_TAG, SPIKE_TAG
+from neurokernel.tools.gpu import get_by_inds
 
 from types import *
 from collections import Counter
@@ -463,12 +465,11 @@ class LPU(Module):
         # i-th smallest element in the original array, which is exactly i.
         # In other words, we have the relations: x[i]=j and y[j]=i.
 
-        num_gpot_neurons = np.where( n_model_is_spk, 0, n_model_num)
-        num_spike_neurons = np.where( n_model_is_spk, n_model_num, 0)
-
-        # Total numbers of gpot and spiking neurons:
-        self.total_num_gpot_neurons = sum( num_gpot_neurons )
-        self.total_num_spike_neurons = sum( num_spike_neurons )
+        # Count total number of gpot and spiking neurons:
+        num_gpot_neurons = np.where(n_model_is_spk, 0, n_model_num)
+        num_spike_neurons = np.where(n_model_is_spk, n_model_num, 0)
+        self.total_num_gpot_neurons = sum(num_gpot_neurons)
+        self.total_num_spike_neurons = sum(num_spike_neurons)
 
         gpot_idx = n_id[ ~n_is_spk ]
         spike_idx = n_id[ n_is_spk ]
@@ -501,9 +502,9 @@ class LPU(Module):
         self.input_neuron_list = self.order(in_id)
         #public_spike_list = self.order(pub_spk_id)
         #public_gpot_list = self.order(pub_gpot_id)
-        self.num_public_gpot = len( self.out_ports_ids_gpot )
-        self.num_public_spike = len( self.out_ports_ids_spk )
-        self.num_input = len( self.input_neuron_list )
+        self.num_public_gpot = len(self.out_ports_ids_gpot)
+        self.num_public_spike = len(self.out_ports_ids_spk)
+        self.num_input = len(self.input_neuron_list)
         #in_ports_ids_gpot = self.order(in_ports_ids_gpot)
         #in_ports_ids_spk = self.order(in_ports_ids_spk)
         self.out_ports_ids_gpot = self.gpot_order(self.out_ports_ids_gpot)
@@ -749,7 +750,8 @@ class LPU(Module):
                 dataset_append(self.gpot_buffer_file['/array'],
                                self.buffer.gpot_buffer.get()
                                .reshape(1, self.gpot_delay_steps, -1))
-            if self.total_synapses + len(self.input_neuron_list) > 0:
+            #if self.total_synapses + len(self.input_neuron_list) > 0:
+            if self.total_synapses + self.num_input > 0:
                 dataset_append(self.synapse_state_file['/array'],
                                self.synapse_state.get().reshape(1, -1))
 
@@ -805,19 +807,6 @@ class LPU(Module):
                     maxshape=(None, self.total_num_spike_neurons))
 
         if self.debug:
-            '''
-            self.in_gpot_files = {}
-            for (key, i) in self.other_lpu_map.iteritems():
-                num = self.num_input_gpot_neurons[i]
-                if num>0:
-                    self.in_gpot_files[key] = \
-                        h5py.File(filename+key+'_in_gpot.'+ext, 'w')
-                    self.in_gpot_files[key].create_dataset('/array',
-                                                           (0, num),
-                                                           dtype=np.float64,
-                                                           maxshape=(None, num))
-
-            '''
             if self.total_num_gpot_neurons > 0:
                 self.gpot_buffer_file = h5py.File(self.id + '_buffer.h5', 'w')
                 self.gpot_buffer_file.create_dataset(
@@ -858,13 +847,15 @@ class LPU(Module):
                                             np.int32)
 
         self.block_extract = (256, 1, 1)
-        if len(self.out_ports_ids_gpot) > 0:
+        #if len(self.out_ports_ids_gpot) > 0:
+        if self.num_public_gpot > 0:
             self.out_ports_ids_gpot_g = garray.to_gpu(self.out_ports_ids_gpot)
             self.sel_out_gpot_ids_g = garray.to_gpu(self.sel_out_gpot_ids)
 
             self._extract_gpot = self._extract_projection_gpot_func()
 
-        if len(self.out_ports_ids_spk) > 0:
+        #if len(self.out_ports_ids_spk) > 0:
+        if self.num_public_spike > 0:
             self.out_ports_ids_spk_g = garray.to_gpu(
                 (self.out_ports_ids_spk).astype(np.int32))
             self.sel_out_spk_ids_g = garray.to_gpu(self.sel_out_spk_ids)
@@ -888,6 +879,7 @@ class LPU(Module):
             self.set_inds(self.pm['gpot'].data, self.V, self.inds_gpot,
                           self.idx_start_gpot[self.ports_in_gpot_mem_ind])
         if self.ports_in_spk_mem_ind is not None:
+            #self.log_info('>>> '+str(get_by_inds(self.pm['spike'].data, self.inds_spike)))
             self.set_inds(self.pm['spike'].data, self.spike_state,
                           self.inds_spike,
                           self.idx_start_spike[self.ports_in_spk_mem_ind])
@@ -914,8 +906,15 @@ class LPU(Module):
         """
         Extract membrane voltages and spike states and store them in data arrays
         of LPU's port maps.
+
+        Parameters
+        ----------
+        st : pycuda.driver.Stream, optional
+            CUDA stream to use for data extraction.
         """
-        if len(self.out_ports_ids_gpot) > 0:
+
+        #if len(self.out_ports_ids_gpot) > 0:
+        if self.num_public_gpot > 0:
             self._extract_gpot.prepared_async_call(
                 self.grid_extract_gpot,
                 self.block_extract, st, self.V.gpudata,
@@ -924,14 +923,15 @@ class LPU(Module):
                 self.sel_out_gpot_ids_g.gpudata,
                 self.num_public_gpot)
 
-        if len(self.out_ports_ids_spk) > 0:
+        #if len(self.out_ports_ids_spk) > 0:
+        if self.num_public_spike > 0:
             self._extract_spike.prepared_async_call(
                 self.grid_extract_spike,
                 self.block_extract, st, self.spike_state.gpudata,
                 self.pm['spike'].data.gpudata,
                 self.out_ports_ids_spk_g.gpudata,
                 self.sel_out_spk_ids_g.gpudata,
-                len(self.out_ports_ids_spk))
+                self.num_public_spike)
 
     def _write_output(self):
         """
