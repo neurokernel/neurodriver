@@ -894,8 +894,9 @@ class LPU(Module):
 
     def set_inds(self, src, dest, inds, dest_shift=0):
         assert isinstance(dest_shift, numbers.Integral)
+        assert src.dtype == dest.dtype
         try:
-            func = self.set_inds.cache[(inds.dtype, dest_shift)]
+            func = self.set_inds.cache[(inds.dtype, src.dtype, dest_shift)]
         except KeyError:
             inds_ctype = dtype_to_ctype(inds.dtype)
             data_ctype = dtype_to_ctype(src.dtype)
@@ -904,7 +905,7 @@ class LPU(Module):
                         inds_ctype=inds_ctype)
             func = elementwise.ElementwiseKernel(v,
                                                  "dest[i+%i] = src[inds[i]]" % dest_shift)
-            self.set_inds.cache[(inds.dtype, dest_shift)] = func
+            self.set_inds.cache[(inds.dtype, src.dtype, dest_shift)] = func
         func(dest, inds, src, range=slice(0, len(inds), 1) )
 
     set_inds.cache = {}
