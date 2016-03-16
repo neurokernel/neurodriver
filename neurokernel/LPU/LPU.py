@@ -749,7 +749,6 @@ class LPU(Module):
                 dataset_append(self.gpot_buffer_file['/array'],
                                self.buffer.gpot_buffer.get()
                                .reshape(1, self.gpot_delay_steps, -1))
-
             if self.total_synapses + len(self.input_neuron_list) > 0:
                 dataset_append(self.synapse_state_file['/array'],
                                self.synapse_state.get().reshape(1, -1))
@@ -1016,10 +1015,10 @@ class LPU(Module):
         Create function for extracting spiking neuron states.
         """
 
-       self.grid_extract_spike = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
+        self.grid_extract_spike = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
                                       (self.num_public_spike-1) / 256 + 1),
                                   1)
-       return self._extract_projection_func(self.spike_state)
+        return self._extract_projection_func(self.spike_state)
 
     def _extract_projection_func(self, state_var):
         """
