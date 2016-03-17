@@ -380,7 +380,7 @@ class visualizer(object):
 
         plt.tight_layout()
 
-        if self.out_filename:
+        if self.out_filename and self.update_interval:
             if self.FFMpeg is None:
                 if which(matplotlib.rcParams['animation.ffmpeg_path']):
                     self.writer = FFMpegFileWriter(fps=self.fps, codec=self.codec)
@@ -406,7 +406,7 @@ class visualizer(object):
                               frame_prefix=os.path.splitext(self.out_filename)[0]+'_')
             self.writer.frame_format = 'png'
             self.writer.grab_frame()
-        else:
+        elif not final_frame_name:
             self.f.show()
 
     def _update(self):
