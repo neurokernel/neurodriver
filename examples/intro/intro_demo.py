@@ -129,6 +129,8 @@ def main():
                         help='Time data reception throughput [default: False]')
     parser.add_argument('-g', '--gpu_dev', default=[0, 1], type=int, nargs='+',
                         help='GPU device numbers [default: 0 1]')
+    parser.add_argument('-d', '--disconnect', default=False, action='store_true',
+                        help='Run with disconnected LPUs [default: False]')
     args = parser.parse_args()
 
     file_name = None
@@ -140,7 +142,8 @@ def main():
     logger = setup_logger(file_name=file_name, screen=screen)
 
     random.seed(0)
-    run(True)
+    c = not args.disconnect
+    run(c)
 
 if __name__=='__main__':
     main()
