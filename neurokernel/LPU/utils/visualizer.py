@@ -148,7 +148,7 @@ class visualizer(object):
         index of the final time step. As a result, the visualizer will only
         generate the final frame.
         '''
-
+        self.final_frame_name = final_frame_name
         self._initialize()
         if not self._update_interval:
             self._update_interval = self._maxt - 1
@@ -406,7 +406,7 @@ class visualizer(object):
                               frame_prefix=os.path.splitext(self.out_filename)[0]+'_')
             self.writer.frame_format = 'png'
             self.writer.grab_frame()
-        elif not final_frame_name:
+        elif not self.final_frame_name:
             self.f.show()
 
     def _update(self):
