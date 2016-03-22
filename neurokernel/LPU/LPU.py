@@ -683,6 +683,8 @@ class LPU(Module):
                                   rank_to_id=rank_to_id, routing_table=routing_table,
                                   device=device, debug=debug, time_sync=time_sync)
 
+        # Integer indices in port map data arrays corresponding to input/output
+        # gpot/spiking ports:
         self.sel_in_gpot_ids = np.array(self.pm['gpot'].ports_to_inds(self.sel_in_gpot),
                                         dtype=np.int32)
         self.sel_out_gpot_ids = np.array(self.pm['gpot'].ports_to_inds(self.sel_out_gpot),
@@ -706,8 +708,6 @@ class LPU(Module):
             if self.total_num_spike_neurons > 0:
                 self.output_spike_file.close()
         if self.debug:
-            # for file in self.in_gpot_files.itervalues():
-            #     file.close()
             if self.total_num_gpot_neurons > 0:
                 self.gpot_buffer_file.close()
             if self.total_synapses + len(self.input_neuron_list) > 0:
@@ -863,28 +863,30 @@ class LPU(Module):
             self._extract_spike = self._extract_projection_spike_func()
 
         if self.ports_in_gpot_mem_ind is not None:
-            inds = self.sel_in_gpot_ids
-            self.inds_gpot = garray.to_gpu(inds)
+            self.inds_gpot = garray.to_gpu(self.sel_in_gpot_ids)
 
         if self.ports_in_spk_mem_ind is not None:
-            inds = self.sel_in_spk_ids
-            self.inds_spike = garray.to_gpu(inds)
+            self.inds_spike = garray.to_gpu(self.sel_in_spk_ids)
 
     def _read_LPU_input(self):
         """
-        Put inputs from other LPUs to buffer.
+        Extract membrane voltages/spike states from LPU's port map data arrays and
+        store them in buffers.
         """
 
         if self.ports_in_gpot_mem_ind is not None:
             self.set_inds(self.pm['gpot'].data, self.V, self.inds_gpot,
                           self.idx_start_gpot[self.ports_in_gpot_mem_ind])
         if self.ports_in_spk_mem_ind is not None:
-            #self.log_info('>>> '+str(get_by_inds(self.pm['spike'].data, self.inds_spike)))
             self.set_inds(self.pm['spike'].data, self.spike_state,
                           self.inds_spike,
                           self.idx_start_spike[self.ports_in_spk_mem_ind])
 
     def set_inds(self, src, dest, inds, dest_shift=0):
+        """
+        Set `dest[i+dest_shift] = src[inds[i]] for i in range(len(inds))`
+        """
+
         assert isinstance(dest_shift, numbers.Integral)
         assert src.dtype == dest.dtype
         try:
@@ -904,7 +906,7 @@ class LPU(Module):
 
     def _extract_output(self, st=None):
         """
-        Extract membrane voltages and spike states and store them in data arrays
+        Extract membrane voltages/spike states from buffers and store them in data arrays
         of LPU's port maps.
 
         Parameters
