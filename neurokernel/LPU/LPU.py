@@ -158,6 +158,7 @@ class LPU(Module):
         neurons.sort(cmp=neuron_cmp)
         for id, neu in neurons:
             model = neu['model']
+
             # if an input_port, make sure selector is specified
             if model == PORT_IN_GPOT or model == PORT_IN_SPK:
                 assert('selector' in neu.keys())
@@ -167,6 +168,7 @@ class LPU(Module):
                 else:
                     neu['spiking'] = True
                     neu['public'] = False
+
             # if an output_port, make sure selector is specified
             if 'public' in neu.keys():
                 if neu['public']:
@@ -175,17 +177,20 @@ class LPU(Module):
                 neu['public'] = False
             if 'selector' not in neu.keys():
                 neu['selector'] = ''
+
             # if the neuron model does not appear before, add it into n_dict
             if model not in n_dict:
                 n_dict[model] = {k:[] for k in neu.keys() + ['id']}
 
             # neurons of the same model should have the same attributes
             assert(set(n_dict[model].keys()) == set(neu.keys() + ['id']))
-            # add neuron data into the subdictionary of n_dict
+
+            # add neuron data to the subdictionary of n_dict
             for key in neu.iterkeys():
                 n_dict[model][key].append( neu[key] )
             n_dict[model]['id'].append( int(id) )
-        # remove duplicate model information
+
+        # Remove duplicate model information:
         for val in n_dict.itervalues(): val.pop('model')
         if not n_dict: n_dict = None
 
@@ -201,7 +206,6 @@ class LPU(Module):
             if 'reverse' not in syn[2] and 'reversal_pot' in syn[2]:
                 syn[2]['reverse'] = syn[2]['reversal_pot']
                 del syn[2]['reversal_pot']
-
             
             # Assign the synapse edge an ID if none exists (e.g., because the
             # graph was never stored/read to/from GEXF):
@@ -216,6 +220,7 @@ class LPU(Module):
 
             # Synapses of the same model must have the same attributes:
             assert(set(s_dict[model].keys()) == set(syn[2].keys() + ['pre', 'post']))
+
             # Add synaptic data to dictionaries within s_dict:
             for key in syn[2].iterkeys():
                 s_dict[model][key].append(syn[2][key])
@@ -328,23 +333,35 @@ class LPU(Module):
         return ','.join(filter(None,
                                [cls.extract_in(n_dict), cls.extract_out(n_dict)]))
         
-    def order(self,ind):
+    def order(self, ind):
+        """
+        Return neuron IDs corresponding to indices into list of all neurons.
+        """
+
         try:
             return self.order_dict[ind]
         except:
-            return np.asarray([self.order_dict[i] for i in ind],np.int32)
+            return np.asarray([self.order_dict[i] for i in ind], np.int32)
             
-    def spike_order(self,ind):
+    def spike_order(self, ind):
+        """
+        Return neuron IDs corresponding to indices into list of spike neurons.
+        """
+
         try:
             return self.spike_order_dict[ind]
         except:
-            return np.asarray([self.spike_order_dict[i] for i in ind],np.int32)
+            return np.asarray([self.spike_order_dict[i] for i in ind], np.int32)
 
-    def gpot_order(self,ind):
+    def gpot_order(self, ind):
+        """
+        Return neuron IDs corresponding to indices into list of gpot neurons.
+        """
+
         try:
             return self.gpot_order_dict[ind]
         except:
-            return np.asarray([self.gpot_order_dict[i] for i in ind],np.int32)
+            return np.asarray([self.gpot_order_dict[i] for i in ind], np.int32)
             
     def __init__(self, dt, n_dict, s_dict, input_file=None, output_file=None,
                  device=0, ctrl_tag=CTRL_TAG, gpot_tag=GPOT_TAG,
@@ -385,21 +402,21 @@ class LPU(Module):
 
         # List of booleans indicating whether first neuron of each model is a
         # spiking model:
-        n_model_is_spk = [ n['spiking'][0] for _, n in self.n_list ]
+        n_model_is_spk = [n['spiking'][0] for _, n in self.n_list]
 
         # Number of neurons of each model:
-        n_model_num = [ len(n['id']) for _, n in self.n_list ]
+        n_model_num = [len(n['id']) for _, n in self.n_list]
 
         # Concatenate lists of integers corresponding to neuron positions in LPU
         # graph for all of the models into a single list:
-        n_id = np.array(sum( [ n['id'] for _, n in self.n_list ], []),
+        n_id = np.array(sum([n['id'] for _, n in self.n_list], []),
                         dtype=np.int32)
 
         # Concatenate lists of common attributes in model dictionaries into
         # single lists:
-        n_is_spk = np.array(sum( [ n['spiking'] for _, n in self.n_list ], []))
-        n_is_pub = np.array(sum( [ n['public'] for _, n in self.n_list ], []))
-        n_has_in = np.array(sum( [ n['extern'] for _, n in self.n_list ], []))
+        n_is_spk = np.array(sum([n['spiking'] for _, n in self.n_list], []))
+        n_is_pub = np.array(sum([n['public'] for _, n in self.n_list], []))
+        n_has_in = np.array(sum([n['extern'] for _, n in self.n_list], []))
 
         # Get selectors and positions of input ports:
         try:
@@ -422,15 +439,9 @@ class LPU(Module):
 
         sel_in = ','.join(filter(None, [sel_in_gpot, sel_in_spk]))
 
-        # Get selectors and positions of output neurons:
+        # Get selectors of output neurons:
         sel_out_gpot = self.extract_out_gpot(n_dict)
         sel_out_spk = self.extract_out_spk(n_dict)
-        self.out_ports_ids_gpot = np.array([id for _, n in self.n_list for id, pub, spk in
-                                            zip(n['id'], n['public'], n['spiking'])
-                                            if pub and not spk], dtype=np.int32)
-        self.out_ports_ids_spk = np.array([id for _, n in self.n_list for id, pub, spk in
-                                           zip(n['id'], n['public'], n['spiking'])
-                                           if pub and spk], dtype=np.int32)
 
         sel_out = ','.join(filter(None, [sel_out_gpot, sel_out_spk]))
         sel_gpot = ','.join(filter(None, [sel_in_gpot, sel_out_gpot]))
@@ -442,73 +453,94 @@ class LPU(Module):
         self.sel_in_gpot = sel_in_gpot
         self.sel_out_gpot = sel_out_gpot
 
-        # TODO: Update the following comment
-        # The following code creates a mapping for each neuron from its "id" to
-        # its position on the gpu array. The gpu array is arranged as follows,
+        # Get IDs of output neurons:
+        self.out_ports_ids_gpot = np.array([id for _, n in self.n_list for id, pub, spk in
+                                            zip(n['id'], n['public'], n['spiking'])
+                                            if pub and not spk], dtype=np.int32)
+        self.out_ports_ids_spk = np.array([id for _, n in self.n_list for id, pub, spk in
+                                           zip(n['id'], n['public'], n['spiking'])
+                                           if pub and spk], dtype=np.int32)
+
+        # The following code creates a mapping for each neuron from its ID to
+        # the position of the memory entry associated with it in a GPU
+        # array. The array is organized as follows:
         #
-        #    | gpot_neuron | spike_neuron |
+        #    | gpot neurons | spiking neurons |
         #
-        # For example, suppose the id's of the gpot neurons and of the spike
-        # neurons are 1,4,5 and 2,0,3, respectively. We allocate gpu memory
-        # for each neuron as follows,
+        # For example, suppose the IDs of the gpot neurons and of the spike
+        # neurons are 1, 4, 5 and 2, 0, 3, respectively. We allocate GPU memory
+        # for each neuron as follows:
         #
         #    | 1 4 5 | 2 0 3 |
         #
-        # To get the position of each neuron, we simply use numpy.argsort:
+        # To get the position of the array entry associated with each neuron, 
+        # we simply use numpy.argsort:
         #
         # >>> x = [1,4,5,2,0,3]
-        # >>> y = numpy.argsort( x )
+        # >>> y = numpy.argsort(x)
         # >>> y
         # [4,0,3,5,1,2]
         #
-        # The i-th value of the returned array is the positon to find the
+        # The i-th value of the returned array is the position of the
         # i-th smallest element in the original array, which is exactly i.
-        # In other words, we have the relations: x[i]=j and y[j]=i.
+        # In other words, x[i] == j and y[j] == i.
+        #
+        # Note also that the sort indices obtained by numpy.argsort are the
+        # same as those obtained by consecutive enumeration of the array of 
+        # neuron IDs.
 
-        # Count total number of gpot and spiking neurons:
+        # Count total number of graded potential and spiking neurons:
         num_gpot_neurons = np.where(n_model_is_spk, 0, n_model_num)
         num_spike_neurons = np.where(n_model_is_spk, n_model_num, 0)
         self.total_num_gpot_neurons = sum(num_gpot_neurons)
         self.total_num_spike_neurons = sum(num_spike_neurons)
 
-        gpot_idx = n_id[ ~n_is_spk ]
-        spike_idx = n_id[ n_is_spk ]
+        # Find sort order of neurons in combined list of graded potential
+        # followed by spiking neuron IDs:
+        gpot_idx = n_id[~n_is_spk]
+        spike_idx = n_id[n_is_spk]
         idx = np.concatenate((gpot_idx, spike_idx))
         order = np.argsort(
             np.concatenate((gpot_idx, spike_idx))).astype(np.int32)
-        self.order_dict = {}
-        for i,id in enumerate(idx):
+        self.order_dict = {} # maps neuron IDs to indices
+        for i, id in enumerate(idx):
             self.order_dict[id] = i
 
+        # Find sort order of neurons within list of 
+        # graded potential neuron IDs only;
         gpot_order = np.argsort(gpot_idx).astype(np.int32)
         self.gpot_order_l = gpot_order
-        self.gpot_order_dict = {}
-        for i,id in enumerate(gpot_idx):
+        self.gpot_order_dict = {} # maps neuron IDs to indices
+        for i, id in enumerate(gpot_idx):
             self.gpot_order_dict[id] = i
 
+        # Find sort order of neurons within list of
+        # spiking neurons only:
         spike_order = np.argsort(spike_idx).astype(np.int32)
         self.spike_order_l = spike_order
-        self.spike_order_dict= {}
-        for i,id in enumerate(spike_idx):
+        self.spike_order_dict= {} # maps neuron IDs to indices
+        for i, id in enumerate(spike_idx):
             self.spike_order_dict[id] = i
 
+        # Offset into concatenated list of neurons where group of spiking
+        # neurons starts:
         self.spike_shift = self.total_num_gpot_neurons
+
+        # Sorted list of neurons accepting external input:
         in_id = n_id[n_has_in]
         in_id.sort()
-        #pub_spk_id = n_id[ n_is_pub & n_is_spk ]
-        #pub_spk_id.sort()
-        #pub_gpot_id = n_id[ n_is_pub & ~n_is_spk ]
-        #pub_gpot_id.sort()
         self.input_neuron_list = self.order(in_id)
-        #public_spike_list = self.order(pub_spk_id)
-        #public_gpot_list = self.order(pub_gpot_id)
+
         self.num_public_gpot = len(self.out_ports_ids_gpot)
         self.num_public_spike = len(self.out_ports_ids_spk)
         self.num_input = len(self.input_neuron_list)
-        #in_ports_ids_gpot = self.order(in_ports_ids_gpot)
-        #in_ports_ids_spk = self.order(in_ports_ids_spk)
+
+        # Replace self.out_ports_ids* with the indices into the original lists
+        # of gpot and spiking neuron IDs that can be used to access the array
+        # elements in memory that correspond to each neuron:
         self.out_ports_ids_gpot = self.gpot_order(self.out_ports_ids_gpot)
         self.out_ports_ids_spk = self.spike_order(self.out_ports_ids_spk)
+
         gpot_delay_steps = 0
         spike_delay_steps = 0
 
@@ -523,11 +555,11 @@ class LPU(Module):
         self.s_dict = s_dict
         self.s_list = self.s_dict.items()
         self.nid_max = np.max(n_id) + 1
-        num_synapses = [ len(s['id']) for _, s in self.s_list ]
+        num_synapses = [len(s['id']) for _, s in self.s_list]
         for (_, s) in self.s_list:
             cls = s['class'][0]
-            s['pre'] = [ self.spike_order(int(nid)) if cls <= 1 else self.gpot_order(int(nid))
-                         for nid in s['pre'] ]
+            s['pre'] = [self.spike_order(int(nid)) if cls <= 1 else self.gpot_order(int(nid))
+                        for nid in s['pre']]
 
             # why don't why need shift for post neuron?
             # For synapses whose post-synaptic site is another synapse, we set
@@ -535,7 +567,7 @@ class LPU(Module):
             # won't confuse synapse ID's with neurons ID's.
             s_neu_post = [self.order(int(nid)) for nid in s['post'] if 'synapse' not in str(nid)]
             s_syn_post = [int(nid[8:])+self.nid_max for nid in s['post'] if 'synapse' in str(nid)]
-            s['post'] = s_neu_post + s_syn_post
+            s['post'] = s_neu_post+s_syn_post
 
             order = np.argsort(s['post']).astype(np.int32)
             for k, v in s.items():
@@ -578,7 +610,7 @@ class LPU(Module):
                           len(self.input_neuron_list)))
 
         cond_post = np.asarray(cond_post, dtype=np.int32)
-        cond_pre = np.asarray(cond_pre, dtype = np.int32)
+        cond_pre = np.asarray(cond_pre, dtype=np.int32)
         reverse = np.asarray(reverse, dtype=np.double)
 
         order1 = np.argsort(cond_post, kind='mergesort')
@@ -653,6 +685,7 @@ class LPU(Module):
             s['cond_post'] = cond_post[idx+cond_post_syn_offset] - self.nid_max
             s['cond_pre'] = cond_pre[idx+cond_post_syn_offset]
             s['reverse'] = reverse[idx+cond_post_syn_offset]
+
             # NOTE: after this point, s['reverse'] is no longer the reverse
             # potential associated with the current synapse class, but the
             # reverse potential of other synapses projecting to the current one.
@@ -847,14 +880,12 @@ class LPU(Module):
                                             np.int32)
 
         self.block_extract = (256, 1, 1)
-        #if len(self.out_ports_ids_gpot) > 0:
         if self.num_public_gpot > 0:
             self.out_ports_ids_gpot_g = garray.to_gpu(self.out_ports_ids_gpot)
             self.sel_out_gpot_ids_g = garray.to_gpu(self.sel_out_gpot_ids)
 
             self._extract_gpot = self._extract_projection_gpot_func()
 
-        #if len(self.out_ports_ids_spk) > 0:
         if self.num_public_spike > 0:
             self.out_ports_ids_spk_g = garray.to_gpu(
                 (self.out_ports_ids_spk).astype(np.int32))
@@ -915,7 +946,6 @@ class LPU(Module):
             CUDA stream to use for data extraction.
         """
 
-        #if len(self.out_ports_ids_gpot) > 0:
         if self.num_public_gpot > 0:
             self._extract_gpot.prepared_async_call(
                 self.grid_extract_gpot,
@@ -925,7 +955,6 @@ class LPU(Module):
                 self.sel_out_gpot_ids_g.gpudata,
                 self.num_public_gpot)
 
-        #if len(self.out_ports_ids_spk) > 0:
         if self.num_public_spike > 0:
             self._extract_spike.prepared_async_call(
                 self.grid_extract_spike,
@@ -938,7 +967,7 @@ class LPU(Module):
     def _write_output(self):
         """
         Save neuron states or spikes to output file.
-        The order is the same as the order of the assigned ids in gexf
+        The order is the same as the order of the assigned neuron IDs in gexf.
         """
 
         if self.total_num_gpot_neurons > 0:
@@ -992,6 +1021,7 @@ class LPU(Module):
         """
         Update circular buffer of past neuron states.
         """
+
         if self.total_num_gpot_neurons>0:
             cuda.memcpy_dtod(int(self.buffer.gpot_buffer.gpudata) +
                 self.buffer.gpot_current*self.buffer.gpot_buffer.ld*
