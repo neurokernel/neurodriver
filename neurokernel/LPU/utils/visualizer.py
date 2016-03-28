@@ -62,7 +62,6 @@ class visualizer(object):
         self._dt = 1
         self._data = {}
         self._graph = {}
-        self._id_to_data_idx = {}
         self._maxt = None
         self._title = None
         self._FFMpeg = None
@@ -111,11 +110,6 @@ class visualizer(object):
                 self._graph[LPU] = graph
             elif graph and gexf_file:
                 raise ValueError('gexf_file and graph cannot be set simultaneously')
-
-            # Map neuron ids to index into output data array:
-            self._id_to_data_idx[LPU] = {m:i for i, m in \
-                enumerate(sorted([int(n) for n, k in \
-                                  self._graph[LPU].nodes_iter(True) if k['spiking']]))}
         else:
             if LPU:
                 LPU = 'input_' + str(LPU)
@@ -295,8 +289,6 @@ class visualizer(object):
                         temp = self.axarr[ind].imshow(np.reshape(\
                                 self._data[LPU][config['ids'][0],0], config['shape']))
 
-
-
                     temp.set_clim(self._imlim)
                     temp.set_cmap(plt.cm.gist_gray)
                     config['handle'] = temp
@@ -318,9 +310,15 @@ class visualizer(object):
                     config['handle'].set_ylabel('Neurons',
                                                 fontsize=self._fontsize-1, weight='bold')
                     config['handle'].set_xlabel('Time (s)',fontsize=self._fontsize-1, weight='bold')
-                    min_id = min(self._id_to_data_idx[LPU].keys())
-                    min_idx = self._id_to_data_idx[LPU][min_id]
-                    config['handle'].set_xlim([0,len(self._data[LPU][min_idx,:])*self._dt])
+                    
+                    # Set x axis limits based upon first neuron in sorted list
+                    # of neuron IDs:
+                    spiking_neuron_sort_order_to_ids = \
+                        {m:i for i, m in enumerate(sorted([int(n) for n, k in \
+                        self._graph[LPU].nodes_iter(True) if k['spiking']]))}
+                    min_j = min(spiking_neuron_sort_order_to_ids.keys())
+                    min_id = spiking_neuron_sort_order_to_ids[min_j]
+                    config['handle'].set_xlim([0,len(self._data[LPU][min_id,:])*self._dt])
                     config['handle'].axes.set_yticks([])
                     config['handle'].axes.set_xticks([])
                 elif config['type'] == 6:
@@ -429,32 +427,23 @@ class visualizer(object):
     def _update(self):
         dt = self._dt
         t = self._t
-        for key, configs in self._config.iteritems():
-            data = self._data[key]
+        for LPU, configs in self._config.iteritems():
+            data = self._data[LPU]
             for config in configs:
                 if config['type'] == 3:
                     if len(config['ids'][0])==1:
-                        config['ydata'].extend(np.reshape(np.double(\
-                                                                    data[config['ids'][0], \
-                                                                         max(0,t-self._update_interval):t]),(-1,)))
+                        config['ydata'].extend(
+                            np.reshape(np.double(data[config['ids'][0],
+                                                      max(0,t-self._update_interval):t]),(-1,)))
                         config['handle'].set_xdata(dt*np.arange(0, t))
                         config['handle'].set_ydata(np.asarray(config['ydata']))
                     else:
-                        config['handle'].set_ydata(\
-                                                   data[config['ids'][0], t])
-
+                        config['handle'].set_ydata(data[config['ids'][0], t])
                 elif config['type']==4:
-
-                    for j, id in enumerate(config['ids'][0]):
-
-                        # Convert neuron id to index into array of generated outputs:
-                        try:
-                            idx = self._id_to_data_idx[key][id]
-                        except:
-                            continue
-                        else:
-                            for time in np.where(data[idx, max(0,t-self._update_interval):t])[0]:
-                                config['handle'].vlines(float(t-time)*self._dt,j+0.75, j+1.25)
+                    # Plot spikes for neurons in order of sorted IDs:
+                    for j, id in enumerate(sorted(config['ids'][0])):
+                        for time in np.where(data[id, max(0,t-self._update_interval):t])[0]:
+                            config['handle'].vlines(float(t-time)*self._dt,j+0.75, j+1.25)
                 elif config['type'] == 0:
                     shape = config['shape']
                     ids = config['ids']
