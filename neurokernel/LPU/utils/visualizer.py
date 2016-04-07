@@ -74,10 +74,9 @@ class visualizer(object):
         To add a plot containing neurons from a particular LPU,
         the LPU needs to be added to the visualization using this
         function. Note that outputs from multiple neurons can
-        be visualized using the same visualizer object. If the contains input,
-        IDs specified in the arguments passed to `add_plot()` are assumed to be
-        indices into array stored in the HDF5 file; otherwise, they are
-        assumed to be node IDs of the loaded NetworkX graph.
+        be visualized using the same visualizer object. The IDs
+        specified in the arguments passed to `add_plot()` are assumed to be
+        indices into array stored in the HDF5 file.
 
         Parameters
         ----------
