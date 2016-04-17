@@ -107,7 +107,7 @@ def main():
                 pat.interface[src, 'type'] = 'gpot'
                 pat.interface[dest, 'type'] = 'gpot'
 
-            man.connect(lpu_0_id, lpu_1_id, pat, 0, 1, compat_check=False)
+            man.connect(lpu_0_id, lpu_1_id, pat, 0, 1)
 
         man.spawn()
         man.start(steps=args.steps)

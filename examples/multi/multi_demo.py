@@ -177,7 +177,7 @@ for id_0, id_1 in itertools.combinations(lpu_dict.keys(), 2):
         pat.interface[src, 'type'] = 'gpot'
         pat.interface[dest, 'type'] = 'gpot'
 
-    man.connect(id_0, id_1, pat, 0, 1, compat_check=False)
+    man.connect(id_0, id_1, pat, 0, 1)
 
 man.spawn()
 man.start(steps=args.steps)
