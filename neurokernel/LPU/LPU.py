@@ -1253,30 +1253,15 @@ class CircularArray(object):
         Advance indices of current graded potential and spiking neuron values.
     """
 
-    def __init__(self, num_gpot_neurons,  gpot_delay_steps,
-                 rest, num_spike_neurons, spike_delay_steps):
+    def __init__(self, num_comps, delay_steps, dtype=np.double):
 
-        self.num_gpot_neurons = num_gpot_neurons
-        if num_gpot_neurons > 0:
-            self.dtype = np.double
-            self.gpot_delay_steps = gpot_delay_steps
-            self.gpot_buffer = parray.empty(
-                (gpot_delay_steps, num_gpot_neurons), np.double)
+        self.num_comps = num_comps
+        self.dtype = dtype
+        self.delay_steps = delay_steps
+        self.buffer = parray.zeros(
+                (delay_steps, num_comps), dtype)
 
-            self.gpot_current = 0
-
-            for i in range(gpot_delay_steps):
-                cuda.memcpy_dtod(
-                    int(self.gpot_buffer.gpudata) +
-                    self.gpot_buffer.ld * i * self.gpot_buffer.dtype.itemsize,
-                    rest.gpudata, rest.dtype.itemsize*num_gpot_neurons)
-
-        self.num_spike_neurons = num_spike_neurons
-        if num_spike_neurons > 0:
-            self.spike_delay_steps = spike_delay_steps
-            self.spike_buffer = parray.zeros(
-                (spike_delay_steps, num_spike_neurons), np.int32)
-            self.spike_current = 0
+        self.current = 0
 
     def step(self):
         """
