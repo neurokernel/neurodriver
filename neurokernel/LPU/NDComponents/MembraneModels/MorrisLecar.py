@@ -13,7 +13,7 @@ class MorrisLecar(BaseNeuron):
             self.compile_options = ['--ptxas-options=-v']
         else:
             self.compile_options = []
-
+            
         self.num_neurons = params_dict['V1'].size
             
         self.dt = np.double(dt)
@@ -25,18 +25,25 @@ class MorrisLecar(BaseNeuron):
         self.n = garray.empty_like(params_dict['initn'])
         cuda.memcpy_dtod(self.n, params_dict['initn'],
                          params_dict['initn'].nbytes)
+
+        self.params_dict = params_dict
+        self.access_buffers = access_buffers
         
         self.update = self.get_euler_kernel(params_dict['initV'].dtype)
 
     def pre_run(self, update_pointers):
         cuda.memcpy_dtod(int(update_pointers['V']),
-                         params_dict['initV'], params_dict['initV'].nbytes)
+                         self.params_dict['initV'],
+                         self.params_dict['initV'].nbytes)
         
 
     def run_step(self, update_pointers, st=None):
         self.update.prepared_async_call(
             self.update_grid, self.update_block, st, update_pointers['V'],
-            self.n.gpudata, self.num_neurons, self.access_buffers['I'],
+            self.params_dict['I']['delay'].gpudata,
+            self.n.gpudata, self.num_neurons, self.access_buffers['I'].gpudata,
+            self.access_buffers['I'].ld, self.access_buffers['I'].current,
+            self.access_buffers['I'].buffer_length,
             self.ddt*1000, self.steps, self.params_dict['V1'].gpudata,
             self.params_dict['V2'].gpudata, self.params_dict['V3'].gpudata, 
             self.params_dict['V4'].gpudata, self.params_dict['phi'].gpudata,
@@ -78,8 +85,9 @@ class MorrisLecar(BaseNeuron):
 
 
     __global__ void
-    hhn_euler_multiple(%(type)s* g_V, %(type)s* g_n, int num_neurons, 
-                       %(type)s* I_pre, %(type)s dt, int nsteps,
+    hhn_euler_multiple(%(type)s* g_V, %(type)s* delay, %(type)s* g_n, int num_neurons, 
+                       %(type)s* I_pre, int ld, int current, int buffer_length,
+                       %(type)s dt, int nsteps,
                        %(type)s* V_1, %(type)s* V_2, %(type)s* V_3, 
                        %(type)s* V_4, %(type)s* Tphi, %(type)s* offset,
                        int* pre, int* cumpre, int* npre)
@@ -88,13 +96,20 @@ class MorrisLecar(BaseNeuron):
         int cart_id = bid * NNEU + threadIdx.x;
 
         %(type)s I, V, n;
-
+        int dl;
+        int col; 
         if(cart_id < num_neurons)
         {
             V = g_V[cart_id];
             I = 0;
             for(int i=cumpre[cart_id]; i< cumpre[cart_id]+npre[cart_id]; i++){
-              I += I_pre[pre[i]];
+              dl = delay[i];
+              col = current - dl;
+              if(col < 0)
+              {
+                col = buffer_length + col;
+              }
+              I += I_pre[col*ld + pre[i]];
             }
             n = g_n[cart_id];
 
@@ -126,5 +141,5 @@ class MorrisLecar(BaseNeuron):
         func = mod.get_function("hhn_euler_multiple")
 
 
-        func.prepare('PPiP'+np.dtype(scalartype).char+'iPPPPPPPPP')
+        func.prepare('PPPiPiii'+np.dtype(scalartype).char+'iPPPPPPPPP')
         return func
