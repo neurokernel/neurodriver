@@ -45,7 +45,7 @@ PORT_OUT_SPK = 'port_out_spk'
 
 class LPU(Module):
     @staticmethod
-    def graph_to_dicts(graph):
+    def graph_to_dicts(graph, uid_key=None):
         """
         Convert graph of LPU neuron/synapse data to Python data structures.
 
@@ -56,6 +56,7 @@ class LPU(Module):
 
         Returns
         -------
+        comp_dict, conns
         TODO: Update
 
         Example
@@ -67,91 +68,37 @@ class LPU(Module):
         TODO: Update
         """
 
-        n_dict = {}
+        comp_dict = {}
+        comps = graph.node.items()
+        
+        for id, comp in comps:
+            model = comp['model']
 
-        # Cast node IDs to str in case they are ints so that the conditional
-        # below doesn't fail:
-        neurons = [x for x in graph.node.items() if 'synapse' not in str(x[0])]
-
-        # Sort neurons based on id (where the id is first converted to an
-        # integer). This is done so that consecutive neurons of the same type
-        # in the constructed LPU is the same in neurokernel
-        neurons.sort(cmp=neuron_cmp)
-        for id, neu in neurons:
-            model = neu['model']
-
-            # if an input_port, make sure selector is specified
-            if model == PORT_IN_GPOT or model == PORT_IN_SPK:
+            # For port, make sure selector is specified
+            if model == 'Port':
                 assert('selector' in neu.keys())
-                if model == PORT_IN_GPOT:
-                    neu['spiking'] = False
-                    neu['public'] = False
-                else:
-                    neu['spiking'] = True
-                    neu['public'] = False
-
-            # if an output_port, make sure selector is specified
-            if 'public' in neu.keys():
-                if neu['public']:
-                    assert('selector' in neu.keys())
-            else:
-                neu['public'] = False
-            if 'selector' not in neu.keys():
-                neu['selector'] = ''
-
+                
             # if the neuron model does not appear before, add it into n_dict
-            if model not in n_dict:
-                n_dict[model] = {k:[] for k in neu.keys() + ['id']}
+            if model not in comp_dict:
+                comp_dict[model] = {k:[] for k in comp.keys() + ['id']}
 
-            # neurons of the same model should have the same attributes
-            assert(set(n_dict[model].keys()) == set(neu.keys() + ['id']))
+            # Same model should have the same attributes
+            assert(set(comp_dict[model].keys()) == set(comp.keys() + ['id']))
 
-            # add neuron data to the subdictionary of n_dict
-            for key in neu.iterkeys():
-                n_dict[model][key].append( neu[key] )
-            n_dict[model]['id'].append( int(id) )
-
-        # Remove duplicate model information:
-        for val in n_dict.itervalues(): val.pop('model')
-        if not n_dict: n_dict = None
-
-        # parse synapse data
-        synapses = graph.edges(data=True)
-        s_dict = {}
-        synapses.sort(cmp=synapse_cmp)
-        for id, syn in enumerate(synapses):
-            # syn[0/1]: pre-/post-neu id; syn[2]: dict of synaptic data
-            model = syn[2]['model']
-            
-            if 'conductance' not in syn[2]: syn[2]['conductance'] = True
-            if 'reverse' not in syn[2] and 'reversal_pot' in syn[2]:
-                syn[2]['reverse'] = syn[2]['reversal_pot']
-                del syn[2]['reversal_pot']
-            
-            # Assign the synapse edge an ID if none exists (e.g., because the
-            # graph was never stored/read to/from GEXF):
-            if syn[2].has_key('id'):
-                syn[2]['id'] = int(syn[2]['id'])
+            # add data to the subdictionary of comp_dict
+            for key in comp.iterkeys():
+                comp_dict[model][key].append( comp[key] ) if not key==uid_key
+            if uid_key:
+                comp_dict[model]['id'].append(comp[uid_key])
             else:
-                syn[2]['id'] = id
-
-            # If the synapse model has not appeared yet, add it to s_dict:
-            if model not in s_dict:
-                s_dict[model] = {k:[] for k in syn[2].keys() + ['pre', 'post']}
-
-            # Synapses of the same model must have the same attributes:
-            assert(set(s_dict[model].keys()) == set(syn[2].keys() + ['pre', 'post']))
-
-            # Add synaptic data to dictionaries within s_dict:
-            for key in syn[2].iterkeys():
-                s_dict[model][key].append(syn[2][key])
-            s_dict[model]['pre'].append(syn[0])
-            s_dict[model]['post'].append(syn[1])
-        for val in s_dict.itervalues():
-            val.pop('model')
-        if not s_dict:
-            s_dict = {}
-        return n_dict, s_dict
+                comp_dict[model]['id'].append( id )
+        
+        # Remove duplicate model information:
+        for val in comp_dict.itervalues(): val.pop('model')
+        
+        # Extract connections
+        conns = graph.edges(data=True)
+        return comp_dict, conns
 
     @staticmethod
     def lpu_parser(filename):
