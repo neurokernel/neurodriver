@@ -1,6 +1,14 @@
 import os
-import glob
+import fnmatch
 
-__all__ = [ os.path.basename(f)[:-3] for f in \
-            glob.glob(os.path.dirname(__file__)+"/*.py") if \
-            not '__init__' in os.path.basename(f)[:-3]]
+__all__ = []
+
+NDC_dir = os.path.dirname(__file__)
+for root, dirnames, filenames in os.walk(NDC_dir):
+    mod_imp = False
+    for f in fnmatch.filter(filenames,"*.py"):
+        if '__init__'!=f[:8]:
+            if root != NDC_dir and not mod_imp:
+                __path__.append(root)
+                mod_imp = True
+            __all__.append(f[:-3])

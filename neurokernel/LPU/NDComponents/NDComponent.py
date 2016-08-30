@@ -1,8 +1,5 @@
 #!/usr/bin/env python
 
-"""
-Base neuron class used by LPU.
-"""
 
 import warnings
 from abc import ABCMeta, abstractmethod, abstractproperty
@@ -23,13 +20,11 @@ class NDComponent(object):
     updates = []
     
     @abstractmethod
-    def __init__(self, params_dict, access_pointers, update_pointers, dt, debug=False, LPU_id=None, cuda_verbose=False):
-        '''
-        '''
+    def __init__(self, params_dict, access_buffers, dt, debug=False, LPU_id=None, cuda_verbose=False):
         pass
         
     @abstractmethod
-    def run_step(self):
+    def run_step(self, update_pointers):
         pass
 
 
