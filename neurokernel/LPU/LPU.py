@@ -285,7 +285,7 @@ class LPU(Module):
         return a
 
     @classmethod
-    def extract_sel_in_gpot(cls, comp_dict, uid_key):
+    def extract_sel_in_gpot(cls, comp_dict):
         """
         Return selectors of non-spiking input ports.
         """
@@ -297,7 +297,7 @@ class LPU(Module):
                              if ptype=='gpot' and io=='in'])
         
     @classmethod
-    def extract_sel_in_spk(cls, comp_dict, uid_key):
+    def extract_sel_in_spk(cls, comp_dict):
         """
         Return selectors of spiking input ports.
         """
@@ -309,7 +309,7 @@ class LPU(Module):
                              if ptype=='spike' and io=='in'])
         
     @classmethod
-    def extract_sel_out_gpot(cls, comp_dict, uid_key):
+    def extract_sel_out_gpot(cls, comp_dict):
         """
         Return selectors of non-spiking output neurons.
         """
@@ -321,7 +321,7 @@ class LPU(Module):
                              if ptype=='gpot' and io=='out'])
         
     @classmethod
-    def extract_sel_out_spk(cls, comp_dict, uid_key):
+    def extract_sel_out_spk(cls, comp_dict):
         """
         Return selectors of spiking output neurons.
         """
@@ -367,7 +367,7 @@ class LPU(Module):
                  output_processors=None, ctrl_tag=CTRL_TAG, gpot_tag=GPOT_TAG,
                  spike_tag=SPIKE_TAG, rank_to_id=None, routing_table=None,
                  uid_key='id', debug=False, columns=['io', 'type', 'interface'],
-                 cuda_verbose=False, time_sync=False):
+                 cuda_verbose=False, time_sync=False, default_dtype=np.double):
 
         LoggerMixin.__init__(self, 'LPU {}'.format(id))
 
@@ -378,6 +378,7 @@ class LPU(Module):
         self.dt = dt
         self.debug = debug
         self.device = device
+        self.default_dtype = default_dtype
         if cuda_verbose:
             self.compile_options = ['--ptxas-options=-v']
         else:
@@ -400,7 +401,6 @@ class LPU(Module):
                 del comp_dict[model]
         
         # Assume zero delay by default
-        self.model_delay_map = {model:0 for model in comp_dict.keys()}
         self.variable_delay_map = {}
         
         # Generate a uid to model map of components
@@ -434,11 +434,10 @@ class LPU(Module):
             data = conn[2] if len(conn)>2 else {}
             
             # Update delay
-            delay = data['delay'] if 'delay' in data.keys() else 0
+            delay = int(round((data['delay']/dt))) \
+                    if 'delay' in data.keys() else 0
             data['delay'] = delay
-            self.model_delay_map[pre_model] = max(delay,
-                                                  self.model_delay_map[pre_model])
-
+            
             if pre_model == 'Aggregator':
                 agg_map[post] = pre
                 reverse_key = (set(['reverse','Vr','VR','reverse_potential'])&
@@ -503,16 +502,15 @@ class LPU(Module):
                         self.in_port_vars[data['variable']] = []
                     self.in_port_vars[data['variable']].append(pre)
                     conns.append((pre, post, data))
-                    
+                    self.variable_delay_map[data['variable']] = max(data['delay'],
+                            self.variable_delay_map[data['variable']] if \
+                            data['variable'] in self.variable_delay_map else 0)
                 elif post_model == 'Port':
                     if not 'variable' in data.keys():
                         data['variable'] = pre_updates[0]
                     self.out_port_conns.append((pre, post, data['variable']))
                 else:
                     self.log_info("Ignoring connection %s -> %s"%(pre,post))
-                self.variable_delay_map[data['variable']] = max(data['delay'],
-                            self.variable_delay_map[data['variable']] if \
-                            data['variable'] in self.variable_delay_map else 0)
                 continue
 
             var = data['variable'] if 'variable' in data.keys() else None
@@ -643,7 +641,7 @@ class LPU(Module):
         
         
         data_gpot = np.zeros(len(self.in_gpot_uids)+len(self.out_gpot_uids),
-                             np.double)
+                             self.default_dtype)
         data_spike = np.zeros(len(self.in_spk_uids)+len(self.out_spk_uids)
                               ,np.int32)
         super(LPU, self).__init__(sel=sel, sel_in=sel_in, sel_out=sel_out,
@@ -684,7 +682,12 @@ class LPU(Module):
         # Instantiate components
         for model in self.models:
             self.components[model] = self._instantiate_component(model)
-
+            for var in self._comps[model]['updates']:
+                buff = self.memory_manager.get_buffer(var)
+                update_pointers[var] = int(buff.gpudata)+buff.current*buff.ld*\
+                                       buff.dtype.itemsize
+            self.components[model].pre_run(update_pointers)
+                
         # Setup ports
         self._setup_input_ports()
         self._setup_output_ports()
@@ -769,7 +772,7 @@ class LPU(Module):
             if not m=='Port':
                 nn = n.copy()
                 nn.pop(self.uid_key)
-                self.memory_manager.params_htod(m, nn)
+                self.memory_manager.params_htod(m, nn, self.default_dtype)
             
     def init_variable_memory(self):
         self.variables = {}
@@ -793,7 +796,7 @@ class LPU(Module):
         for var, d in self.variables.items():
             d['cumlen'] = np.cumsum([0]+d['len'])
             self.memory_manager.memory_alloc(var, d['cumlen'][-1], d['delay']+1,\
-                            np.double if not var=='spike_state' else np.int32)
+                    self.default_dtype if not var=='spike_state' else np.int32)
         
     def process_connections(self):
         for (model, attribs) in self.comp_list:
@@ -842,6 +845,7 @@ class LPU(Module):
     def run_step(self):
         super(LPU, self).run_step()
 
+    
         # Update input ports
         self._read_LPU_input()
         
