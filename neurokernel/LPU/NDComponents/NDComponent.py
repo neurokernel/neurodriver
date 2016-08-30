@@ -28,7 +28,7 @@ class NDComponent(object):
         pass
 
 
-    def pre_run(self):
+    def pre_run(self, update_pointers):
         pass
         
     def post_run(self):
