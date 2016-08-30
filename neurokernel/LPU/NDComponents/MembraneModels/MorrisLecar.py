@@ -47,8 +47,8 @@ class MorrisLecar(BaseNeuron):
             self.ddt*1000, self.steps, self.params_dict['V1'].gpudata,
             self.params_dict['V2'].gpudata, self.params_dict['V3'].gpudata, 
             self.params_dict['V4'].gpudata, self.params_dict['phi'].gpudata,
-            self.params_dict['offset'].gpudata, self.params_dict['pre'].gpudata,
-            self.params_dict['cumpre'].gpudata, self.params_dict['npre'].gpudata)
+            self.params_dict['offset'].gpudata, self.params_dict['pre']['I'].gpudata,
+            self.params_dict['cumpre']['I'].gpudata, self.params_dict['npre']['I'].gpudata)
 
 
     def get_euler_kernel(self, dtype=np.double):
