@@ -16,6 +16,10 @@ import pycuda.elementwise as elementwise
 import numpy as np
 import networkx as nx
 
+import copy
+import itertools
+import numbers
+
 # Work around bug in networkx < 1.9 that causes networkx to choke on GEXF
 # files with boolean attributes that contain the strings 'True' or 'False'
 # (bug already observed in https://github.com/networkx/networkx/pull/971)
@@ -45,7 +49,100 @@ PORT_OUT_SPK = 'port_out_spk'
 
 class LPU(Module):
     @staticmethod
-    def graph_to_dicts(graph, uid_key=None):
+    def conv_old_graph(g):
+        """
+        Converts a gexf from legacy neurodriver format to one currently
+        supported
+        """
+
+        assert isinstance(g, nx.MultiDiGraph)
+
+        # Find maximum ID in given graph so that we can use it to create new nodes
+        # with IDs that don't overlap with those that already exist:
+        max_id = 0
+        for id in g.nodes():
+            if isinstance(id, basestring):
+                if id.isdigit():
+                    max_id = max(max_id, int(id))
+                else:
+                    raise ValueError('node id must be an integer')
+            elif isinstance(id, numbers.Integral):
+                max_id = max(max_id, id)
+            else:
+                raise ValueError('node id must be an integer')
+            gen_new_id = itertools.count(max_id+1).next
+
+        # Create LPU and interface nodes and connect the latter to the former via an
+        # Owns edge:
+        g_new = nx.MultiDiGraph()
+        
+        # Transformation:
+        # 1. nonpublic neuron node -> neuron node
+        # 2. public neuron node -> neuron node with
+        #    output edge to output port
+        # 3. input port -> input port
+        # 4. synapse edge -> synapse node + 2 edges connecting
+        #    transformed original input/output nodes
+        edges_to_out_ports = [] # edges to new output port nodes:
+        for id, data in g.nodes(data=True):
+
+            # Don't clobber the original graph's data:
+            data = copy.deepcopy(data)
+
+            if 'public' in data and data['public']:
+                new_id = gen_new_id()
+                port_data = {'selector': data['selector'],
+                             'port_type': 'spike' if data['spiking'] else 'gpot',
+                             'port_io': 'out',
+                             'class': 'Port'}
+                g_new.add_node(new_id, port_data)
+                edges_to_out_ports.append((id, new_id)) 
+
+            if 'model' in data:
+                if data['model'] == 'port_in_gpot':
+                    data['class'] = 'Port'
+                    data['port_type'] = 'gpot'
+                    data['port_io'] = 'in'
+
+                elif data['model'] == 'port_in_spk':
+                    data['class'] = 'Port'
+                    data['port_type'] = 'spike'
+                    data['port_io'] = 'in'
+
+                else:
+                    data['class'] = data['model']
+
+                # Don't need to several attributes that are implicit:
+                for a in ['model', 'public', 'spiking']:
+                    if a in data: del data[a]
+
+                g_new.add_node(id, attr_dict=data)
+
+        # Create synapse nodes for each edge in original graph and connect them to
+        # the source/dest neuron/port nodes:
+        for from_id, to_id, data in g.edges(data=True):
+            data = copy.deepcopy(data)
+            if data['model'] == 'power_gpot_gpot':
+                data['class'] = 'PowerGPotGPot'
+            else:
+                data['class'] = data['model']
+            del data['model']
+
+            if 'id' in data: del data['id']
+
+            new_id = gen_new_id()
+            g_new.add_node(new_id, attr_dict=data)
+            g_new.add_edge(from_id, new_id, attr_dict={})
+            g_new.add_edge(new_id, to_id, attr_dict={})
+
+        # Connect output ports to the neurons that emit data through them:
+        for from_id, to_id in edges_to_out_ports:
+            g_new.add_edge(from_id, to_id, attr_dict={})
+
+        return g_new
+                
+    @staticmethod
+    def graph_to_dicts(graph, uid_key=None, class_key='class'):
         """
         Convert graph of LPU neuron/synapse data to Python data structures.
 
@@ -72,7 +169,7 @@ class LPU(Module):
         comps = graph.node.items()
         
         for id, comp in comps:
-            model = comp['model']
+            model = comp[class_key]
 
             # For port, make sure selector is specified
             if model == 'Port':
@@ -94,7 +191,7 @@ class LPU(Module):
                 comp_dict[model]['id'].append( id )
         
         # Remove duplicate model information:
-        for val in comp_dict.itervalues(): val.pop('model')
+        for val in comp_dict.itervalues(): val.pop(class_key)
         
         # Extract connections
         conns = graph.edges(data=True)
@@ -121,6 +218,15 @@ class LPU(Module):
 
         graph = nx.read_gexf(filename)
         return LPU.graph_to_dicts(graph)
+
+    @staticmethod
+    def lpu_parser_legacy(filename):
+        """
+        TODO: Update
+        """
+
+        graph = nx.read_gexf(filename)
+        return LPU.graph_to_dicts(LPU.conv_old_graph(graph))
 
     @classmethod
     def extract_in_gpot(cls, comp_dict, uid_key):
@@ -308,6 +414,7 @@ class LPU(Module):
         # Map from post synaptic component to aggregator uid
         agg_map = {}
         agg = {}
+
         
         conns = []
         self.in_port_vars = {}
