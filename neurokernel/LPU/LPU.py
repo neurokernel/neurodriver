@@ -483,9 +483,12 @@ class LPU(Module):
                                           '%s to %s'%(pre,post))
                             reverse = 0
                     if post in agg.keys():
-                        agg[post].append = {'pre':pre,'reverse':reverse,'variable':'g'}
+                        agg[post].append = {'pre':pre,'reverse':reverse,
+                                            'variable':'g'}
                     else:
-                        agg[post] = [{'pre':pre,'reverse':reverse,'variable':'g'}]
+                        # Make sure aggregator has access to postsynaptic voltage
+                        agg[post] = [{'pre':post,'variable':V},
+                                     {'pre':pre,'reverse':reverse,'variable':'g'}]
                     agg[post][-1].update({k:v for k,v in data.items()})
                     if post not in agg_map:
                         uid = self.generate_uid()

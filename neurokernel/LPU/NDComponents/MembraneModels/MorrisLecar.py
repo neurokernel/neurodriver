@@ -7,7 +7,7 @@ import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
 class MorrisLecar(BaseNeuron):
-    def __init__(self, params_dict, access_buffers, dt, LPU_id=None,
+    def __init__(self, params_dict, access_buffers, dt, LPU=None,
                  debug=False, cuda_verbose=False):
         if cuda_verbose:
             self.compile_options = ['--ptxas-options=-v']
@@ -19,16 +19,19 @@ class MorrisLecar(BaseNeuron):
         self.dt = np.double(dt)
         self.steps = max(int(round(dt / 1e-5)), 1)
         self.debug = debug
-
         self.ddt = dt / self.steps
-        
+
+        self.LPU = LPU
+
+        # TODO: use LPU object to request memory from memory_manager
+        # for even internal states
+        self.I = garray.zeros_like(params_dict['initV'])
         self.n = garray.empty_like(params_dict['initn'])
         cuda.memcpy_dtod(self.n, params_dict['initn'],
                          params_dict['initn'].nbytes)
 
         self.params_dict = params_dict
         self.access_buffers = access_buffers
-        
         self.update = self.get_euler_kernel(params_dict['initV'].dtype)
 
     def pre_run(self, update_pointers):
@@ -38,17 +41,21 @@ class MorrisLecar(BaseNeuron):
         
 
     def run_step(self, update_pointers, st=None):
+        self.sum_in_variable('I', self.I)
         self.update.prepared_async_call(
-            self.update_grid, self.update_block, st, update_pointers['V'],
-            self.params_dict['I']['delay'].gpudata,
-            self.n.gpudata, self.num_neurons, self.access_buffers['I'].gpudata,
-            self.access_buffers['I'].ld, self.access_buffers['I'].current,
-            self.access_buffers['I'].buffer_length,
-            self.ddt*1000, self.steps, self.params_dict['V1'].gpudata,
-            self.params_dict['V2'].gpudata, self.params_dict['V3'].gpudata, 
-            self.params_dict['V4'].gpudata, self.params_dict['phi'].gpudata,
-            self.params_dict['offset'].gpudata, self.params_dict['pre']['I'].gpudata,
-            self.params_dict['cumpre']['I'].gpudata, self.params_dict['npre']['I'].gpudata)
+            self.update_grid, self.update_block, st,
+            update_pointers['V'],
+            self.n.gpudata,
+            self.num_neurons,
+            self.I.gpudata,
+            self.ddt*1000,
+            self.steps,
+            self.params_dict['V1'].gpudata,
+            self.params_dict['V2'].gpudata,
+            self.params_dict['V3'].gpudata, 
+            self.params_dict['V4'].gpudata,
+            self.params_dict['phi'].gpudata,
+            self.params_dict['offset'].gpudata)
 
 
     def get_euler_kernel(self, dtype=np.double):
@@ -141,5 +148,5 @@ class MorrisLecar(BaseNeuron):
         func = mod.get_function("hhn_euler_multiple")
 
 
-        func.prepare('PPPiPiii'+np.dtype(scalartype).char+'iPPPPPPPPP')
+        func.prepare('PPiP'+np.dtype(scalartype).char+'iPPPPPP')
         return func

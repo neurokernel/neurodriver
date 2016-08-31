@@ -37,7 +37,7 @@ class MemoryManager(object):
         self.variables[variable_name] = \
                             CircularArray(size, buffer_length, dtype, init)
 
-    def params_htod(self, model_name, param_dict):
+    def params_htod(self, model_name, param_dict, dtype=np.double):
         if model_name in self.parameters:
             assert(not (set(self.parameters[model_name].keys()) &
                         set(param_dict.keys())))
@@ -55,10 +55,13 @@ class MemoryManager(object):
                 for var,data in v.items():
                     for d_key,d in data.items():
                         if not all([isnumeric(i) for i in d]): continue
-                        cd[var][d_key] = garray.to_gpu(np.array(d))
+                        if d_key=='delay':
+                            cd[var][d_key] = garray.to_gpu(np.array(d, np.int32))
+                        else:
+                            cd[var][d_key] = garray.to_gpu(np.array(d, dtype))
                 self.parameters[model_name]['conn_data'] = cd
             if not all([isnumeric(i) for i in v]): continue
-            self.parameters[model_name][k] = garray.to_gpu(np.array(v))
+            self.parameters[model_name][k] = garray.to_gpu(np.array(v, dtype))
             
     def step(self):
         for buff in self.variables.values():
@@ -114,7 +117,9 @@ class CircularArray(object):
             self.buffer = parray.zeros(
                  (buffer_length, size), dtype)
         self.current = 0
-
+        self.gpudata = self.buffer.gpudata
+        self.ld = self.buffer.ld
+        
     def step(self):
         """
         Advance indices of current graded potential and spiking neuron values.
