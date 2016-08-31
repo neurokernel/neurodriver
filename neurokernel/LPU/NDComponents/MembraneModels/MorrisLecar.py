@@ -1,4 +1,4 @@
-from baseneuron import BaseNeuron
+from BaseMembraneModel import BaseMembraneModel
 
 import numpy as np
 import pycuda.gpuarray as garray
@@ -6,7 +6,7 @@ from pycuda.tools import dtype_to_ctype
 import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
-class MorrisLecar(BaseNeuron):
+class MorrisLecar(BaseMembraneModel):
     def __init__(self, params_dict, access_buffers, dt, LPU=None,
                  debug=False, cuda_verbose=False):
         if cuda_verbose:

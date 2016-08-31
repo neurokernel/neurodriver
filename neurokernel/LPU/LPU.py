@@ -184,7 +184,8 @@ class LPU(Module):
 
             # add data to the subdictionary of comp_dict
             for key in comp.iterkeys():
-                comp_dict[model][key].append( comp[key] ) if not key==uid_key
+                if not key==uid_key:
+                    comp_dict[model][key].append( comp[key] )
             if uid_key:
                 comp_dict[model]['id'].append(comp[uid_key])
             else:
@@ -643,9 +644,6 @@ class LPU(Module):
         # Number of components of each model:
         self.model_num = [len(n[uid_key]) for _, n in self.comp_list]
 
-
-        
-        
         data_gpot = np.zeros(len(self.in_gpot_uids)+len(self.out_gpot_uids),
                              self.default_dtype)
         data_spike = np.zeros(len(self.in_spk_uids)+len(self.out_spk_uids)
@@ -716,8 +714,8 @@ class LPU(Module):
                 self.out_port_inds_gpot[var].append(self.out_gpot_inds[\
                                             self.out_gpot_uids.index(post_uid)])
                 m = self.uid_model_map[pre_uid]
-                mind = self.variables[var]['models'].index(m)
-                shift = self.variables[var]['cumlen'][mind]
+                mind = self.memory_manager.variables[var]['models'].index(m)
+                shift = self.memory_manager.variables[var]['cumlen'][mind]
                 in_model_ind = self.comp_list[self.models[m]][1]\
                                [self.uid_key].index(p)
                 self.out_var_inds_gpot[var].append(in_model_ind+shift)
@@ -725,8 +723,8 @@ class LPU(Module):
                 self.out_port_inds_spk[var].append(self.out_spk_inds[\
                                             self.out_spk_uids.index(post_uid)])
                 m = self.uid_model_map[pre_uid]
-                mind = self.variables[var]['models'].index(m)
-                shift = self.variables[var]['cumlen'][mind]
+                mind = self.memory_manager.variables[var]['models'].index(m)
+                shift = self.memory_manager.variables[var]['cumlen'][mind]
                 in_model_ind = self.comp_list[self.models[m]][1]\
                                [self.uid_key].index(p)
                 self.out_var_inds_spk[var].append(in_model_ind+shift)
@@ -750,18 +748,18 @@ class LPU(Module):
             self.var_inds_gpot[var] = []
             self.port_inds_spk[var] = []
             self.var_inds_spk[var] = []
+            mind = self.memory_manager.variables[var]['models'].index('Port')
+            shift = self.memory_manager.variables[var]['cumlen'][mind]
+            # The following assumes the intersection of set of variables
+            # accessed via spiking with those accessed via gpot ports is null
             for i,uid in enumerate(uids):
                 if uid in self.in_gpot_uids:
                     self.port_inds_gpot[var].append(self.in_gpot_inds[\
                                             self.in_gpot_uids.index(uid)])
-                    mind = self.variables[var]['models'].index('Port')
-                    shift = self.variables[var]['cumlen'][mind]
                     self.var_inds_gpot[var].append(i + shift)
                 else:
                     self.port_inds_spk[var].append(self.in_spk_inds[\
                                             self.in_spk_uids.index(uid)])
-                    mind = self.variables[var]['models'].index('Port')
-                    shift = self.variables[var]['cumlen'][mind]
                     self.var_inds_spk[var].append(i + shift)
         for var in self.port_inds_gpot.keys():
             if not self.port_inds_gpot[var]:
@@ -781,28 +779,31 @@ class LPU(Module):
                 self.memory_manager.params_htod(m, nn, self.default_dtype)
             
     def init_variable_memory(self):
-        self.variables = {}
-        for (model, _) in self.comp_list:
+        var_info = {}
+        for (model, attribs) in self.comp_list:
             if model=='Port': continue
             for var in self._comps[model]['updates']:
-                if not var in self.variables:
-                    self.variables[var] = {'models':[],'len':[],'delay':0}
-                self.variables[var]['models'].append(model)
-                self.variables[var]['len'].append(self.model_num[i])
+                if not var in var_info:
+                    var_info[var] = {'models':[],'len':[],'delay':0,'uids':[]}
+                var_info[var]['models'].append(model)
+                var_info[var]['len'].append(len(attribs[self.uid_key]))
+                var_info[var]['uids'].extend(attribs[self.uid_key])
                 
         # Add memory for input ports
         for var in self.in_port_vars.keys():
-            if not var in self.variables:
-                self.variables[var] = {'models':[],'len':[],'delay':0}
-            self.variables[var]['models'].append('Port')
-            self.variables[var]['len'].append(len(self.in_port_vars[var]))
+            if not var in self.var_info:
+                var_info[var] = {'models':[],'len':[],'delay':0,'uids':[]}
+            var_info[var]['models'].append('Port')
+            var_info[var]['len'].append(len(self.in_port_vars[var]))
+            var_info[var]['uids'].extend(self.in_port_vars[var])
 
         for var in self.variable_delay_map.keys():
-            self.variables[var]['delay'] = self.variable_delay_map[var]
-        for var, d in self.variables.items():
+            var_info[var]['delay'] = self.variable_delay_map[var]
+        for var, d in var_info.items():
             d['cumlen'] = np.cumsum([0]+d['len'])
             self.memory_manager.memory_alloc(var, d['cumlen'][-1], d['delay']+1,\
-                    self.default_dtype if not var=='spike_state' else np.int32)
+                dtype=self.default_dtype if not var=='spike_state' else np.int32,
+                info=d)
         
     def process_connections(self):
         for (model, attribs) in self.comp_list:
@@ -818,8 +819,8 @@ class LPU(Module):
                         # particular variable memory
                         p = self.conn_dict[uid]['pre']
                         m = self.uid_model_map[p]
-                        mind = self.variables[var]['models'].index(m)
-                        shift = self.variables[var]['cumlen'][mind]
+                        mind = self.memory_manager.variables[var]['models'].index(m)
+                        shift = self.memory_manager.variables[var]['cumlen'][mind]
                         in_model_ind = self.comp_list[self.models[m]][1]\
                                        [self.uid_key].index(p)
                         
@@ -931,7 +932,7 @@ class LPU(Module):
 
         assert src.dtype == dest.dtype
         try:
-            func = self.set_inds_both.cache[(inds.dtype, src.dtype)]
+            func = self.set_inds_both.cache[(src_inds.dtype, src.dtype)]
         except KeyError:
             inds_ctype = dtype_to_ctype(src_inds.dtype)
             data_ctype = dtype_to_ctype(src.dtype)
@@ -940,8 +941,8 @@ class LPU(Module):
                         data_ctype=data_ctype,inds_ctype=inds_ctype)
             func = elementwise.ElementwiseKernel(v,\
                             "dest[dest_inds[i]] = src[src_inds[i]]")
-            self.set_inds.cache[(inds.dtype, src.dtype, dest_shift)] = func
-        func(dest, inds, src, range=slice(0, len(inds), 1) )
+            self.set_inds_both.cache[(src_inds.dtype, src.dtype)] = func
+        func(dest, dest_inds, src, src_inds, range=slice(0, len(src_inds), 1) )
 
     set_inds_both.cache = {}
 
@@ -965,11 +966,13 @@ class LPU(Module):
         """
         Load all available NDcomponents
         """
-
-        comp_classes = NDcomponent.NDcomponent.__subclasses__()
+        child_classes = NDComponent.NDComponent.__subclasses__()
+        comp_classes = child_classes[:]
+        for cls in child_classes:
+            comp_classes.extend(cls.__subclasses__())
         self._comps = {cls.__name__:{'accesses': cls.accesses ,
                                      'updates':cls.updates,
                                      'cls':cls} \
-                       for cls in comp_classes}
+                       for cls in comp_classes if not cls.__name__[:4]=='Base'}
         
 

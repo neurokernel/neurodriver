@@ -1,4 +1,4 @@
-from basesynapse import BaseSynapse
+from BaseSynapseModel import BaseSynapseModel
 
 import numpy as np
 
@@ -73,7 +73,7 @@ __global__ void alpha_synapse(
     return;
 }
 """
-class AlphaSynapse(BaseSynapse):
+class AlphaSynapse(BaseSynapseModel):
 
     def __init__( self, params_dict, access_buffers, dt,
                   LPU=None, debug=False, cuda_verbose=False):

@@ -1,4 +1,4 @@
-from basesynapse import BaseSynapse
+from BaseSynapseModel import BaseSynapseModel
 
 import numpy as np
 
@@ -8,7 +8,7 @@ import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
 #This class assumes a single pre synaptic connection per component instance
-class PowerGPotGPot(BaseSynapse):
+class PowerGPotGPot(BaseSynapseModel):
     def __init__(self, params_dict, access_buffers, dt,
                  LPU=None, debug=False, cuda_verbose=False):
         if cuda_verbose:

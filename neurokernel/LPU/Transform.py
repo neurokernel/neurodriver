@@ -24,15 +24,6 @@ class Transform(Object):
         return self._kernel
         
     @property
-    def custom_kernel(self):
-        return self._custom_kernel
-
-    @custom_kernel.setter
-    def custom_kernel(self, value):
-        assert(isinstance(value),int) 
-        self._custom_kernel = value
-    
-    @property
     def variable_name(self):
         return self._variable_name
         
@@ -48,19 +39,20 @@ class Transform(Object):
     @obj_ids.setter
     def obj_ids(self, value):
         assert(self._variable_name)
-        assert(self.LPU_obj.are_ids_valid(value)):
         self._obj_ids = value
 
     @property
     def LPU_obj(self):
         return self._LPU_obj
         
-    @property kernel(self):
+    @property
+    def kernel(self):
         if self._need_to_generate_kernel:
             self._gen_kernel_code()
         return self._kernel_string
             
-    @kernel.setter(self, value):
+    @kernel.setter
+    def kernel(self, value):
         assert(isinstance(value, string))
         self._custom_kernel = True
         self._need_to_compile_kernel = True

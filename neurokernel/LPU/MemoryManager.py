@@ -3,28 +3,21 @@ import numpy as np
 import pycuda.gpuarray as garray
 
 class MemoryManager(object):
-
     def __init__(self,devices=None):
-    '''
-    TODO : support multiple devices feature. This probably will require
-           changes to the neurokernel core as well
-    devices should be a list containing the device numbers of the GPUs to be
-    used by this MemoryManager
-    '''
+        '''
+        TODO : support multiple devices feature. This probably will require
+        changes to the neurokernel core as well
+        devices should be a list containing the device numbers of the GPUs to be
+        used by this MemoryManager
+        '''
         self.devices = devices
         self.variables = {}
         self.parameters = {}
         self.mapping = {}          #Mapping from [model_name->variable/parameter]->pos
         
     def get_buffer(self, variable_name):
-        return self.variables[variable_name]
+        return self.variables[variable_name]['buffer']
 
-    def get_memory(self, variable_name):
-        return self.variables[variable_name].buffer.gpudata
-
-    def get_ld(self, variable_name):
-        return self.variables[variable_name].buffer.ld
-        
     def mutate_variable(self, variable_name, transform):
         pass
 
@@ -32,11 +25,12 @@ class MemoryManager(object):
         pass
 
     def memory_alloc(self, variable_name, size, buffer_length=1,
-                     dtype=np.double, init=None):
+                     dtype=np.double, info={}, init=None):
         assert(variable_name not in self.variables)
-        self.variables[variable_name] = \
-                            CircularArray(size, buffer_length, dtype, init)
-
+        self.variables[variable_name] = {'buffer': \
+                            CircularArray(size, buffer_length, dtype, init)}
+        self.variables[variable_name].update(info)
+            
     def params_htod(self, model_name, param_dict, dtype=np.double):
         if model_name in self.parameters:
             assert(not (set(self.parameters[model_name].keys()) &
@@ -64,8 +58,8 @@ class MemoryManager(object):
             self.parameters[model_name][k] = garray.to_gpu(np.array(v, dtype))
             
     def step(self):
-        for buff in self.variables.values():
-            buff.step()
+        for d in self.variables.values():
+            d['buffer'].step()
             
 class CircularArray(object):
     """
@@ -89,7 +83,7 @@ class CircularArray(object):
         See above
     dtype :
         See above
-    buffer : parray
+    parr : parray
         Pitched array of dimensions (buffer_length, size)
     current : int
         An integer in [0,buffer_length) representing Current position
@@ -108,17 +102,17 @@ class CircularArray(object):
         if init:
             try:
                 init = dtype(init)
-                self.buffer = parray.ones(
+                self.parr = parray.ones(
                  (buffer_length, size), dtype) * init
             except:
-                self.buffer = parray.zeros(
+                self.parr = parray.zeros(
                  (buffer_length, size), dtype)
         else:
-            self.buffer = parray.zeros(
+            self.parr = parray.zeros(
                  (buffer_length, size), dtype)
         self.current = 0
-        self.gpudata = self.buffer.gpudata
-        self.ld = self.buffer.ld
+        self.gpudata = self.parr.gpudata
+        self.ld = self.parr.ld
         
     def step(self):
         """

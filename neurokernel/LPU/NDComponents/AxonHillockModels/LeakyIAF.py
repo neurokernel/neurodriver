@@ -1,4 +1,4 @@
-from baseneuron import BaseNeuron
+from BaseAxonHillockModel import BaseAxonHillockModel
 
 import numpy as np
 import pycuda.gpuarray as garray
@@ -51,7 +51,7 @@ __global__ void leaky_iaf(
 }
 """
 
-class LeakyIAF(BaseNeuron):
+class LeakyIAF(BaseAxonHillockModel):
     def __init__(self, params_dict, access_buffers, dt,
                  debug=False, LPU=None, cuda_verbose=False):
         if cuda_verbose:
