@@ -367,7 +367,8 @@ class LPU(Module):
                  output_processors=None, ctrl_tag=CTRL_TAG, gpot_tag=GPOT_TAG,
                  spike_tag=SPIKE_TAG, rank_to_id=None, routing_table=None,
                  uid_key='id', debug=False, columns=['io', 'type', 'interface'],
-                 cuda_verbose=False, time_sync=False, default_dtype=np.double):
+                 cuda_verbose=False, time_sync=False, default_dtype=np.double,
+                 control_inteface=None):
 
         LoggerMixin.__init__(self, 'LPU {}'.format(id))
 
@@ -376,9 +377,11 @@ class LPU(Module):
         assert('interface' in columns)
         self.LPU_id = id
         self.dt = dt
+        self.time = 0
         self.debug = debug
         self.device = device
         self.default_dtype = default_dtype
+        self.control_inteface = control_inteface
         if cuda_verbose:
             self.compile_options = ['--ptxas-options=-v']
         else:
@@ -695,8 +698,8 @@ class LPU(Module):
         self._setup_input_ports()
         self._setup_output_ports()
 
-        self.first_step = True
-
+        if self.control_inteface: self.control_inteface.register(self)
+        
     # TODO: optimize the order of self.out_port_conns beforehand
     def _setup_ouput_ports(self):
         self.out_port_inds_gpot = {}
@@ -869,12 +872,17 @@ class LPU(Module):
         # Process output processors
 
         # Check for transforms
-                               
+
         # Update output ports
         self._extract_output()
 
         # Step through buffers
         self.memory_manager.step()
+
+        self.time += self.dt
+
+        # Instruct Control inteface to process any pending commands
+        if self.control_inteface: self.control_inteface.process_commands()
         
     def _read_LPU_input(self):
         """
