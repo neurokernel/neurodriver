@@ -58,10 +58,7 @@ class BaseInputProcessor(object):
         self.add_inds(self._d_input[var], buff.gpudata,
                       self.dest_inds[var], buff.ld*buff.current)
         
-    @property
-    def max_one_time_read(self):
-        return self._max_one_time_read
-
+    
     # Should be implemented by child class
     def update_input(self):
         raise NotImplementedError

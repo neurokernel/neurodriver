@@ -39,7 +39,6 @@ from utils.simpleio import *
 import utils.parray as parray
 
 from NDComponents import *
-
 from MemoryManager import MemoryManager
 
 PORT_IN_GPOT = 'port_in_gpot'
@@ -49,7 +48,7 @@ PORT_OUT_SPK = 'port_out_spk'
 
 class LPU(Module):
     @staticmethod
-    def conv_old_graph(g):
+    def conv_legacy_graph(g):
         """
         Converts a gexf from legacy neurodriver format to one currently
         supported
@@ -227,7 +226,7 @@ class LPU(Module):
         """
 
         graph = nx.read_gexf(filename)
-        return LPU.graph_to_dicts(LPU.conv_old_graph(graph))
+        return LPU.graph_to_dicts(LPU.conv_legacy_graph(graph))
 
     @classmethod
     def extract_in_gpot(cls, comp_dict, uid_key):
@@ -696,6 +695,14 @@ class LPU(Module):
         self._setup_input_ports()
         self._setup_output_ports()
 
+        for p in self.input_processors:
+            p.LPU_obj = self
+            p._pre_run()
+            
+        for p in self.output_processors:
+            p.LPU_obj = self
+            p._pre_run()
+
         if self.control_inteface: self.control_inteface.register(self)
         
     # TODO: optimize the order of self.out_port_conns beforehand
@@ -856,8 +863,7 @@ class LPU(Module):
         # Update input ports
         self._read_LPU_input()
         
-        # Process input processors
-
+        for p in self.input_processors: p.run_step()
         
         # Call run_step of components
         for model in self.exec_order:
@@ -871,7 +877,8 @@ class LPU(Module):
 
         
         # Process output processors
-
+        for p in self.output_processors: p.run_step()
+        
         # Check for transforms
 
         # Update output ports
