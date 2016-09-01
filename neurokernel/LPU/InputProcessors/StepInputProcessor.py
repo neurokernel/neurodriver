@@ -18,8 +18,5 @@ class StepInputProcessor(BaseInputProcessor):
     def is_input_available(self):
         return (self.LPU_obj.time >= self.start and
                 self.LPU_obj.time < self.start)
-        
-    def post_run(self):
-        self.h5file.close()
 
     
