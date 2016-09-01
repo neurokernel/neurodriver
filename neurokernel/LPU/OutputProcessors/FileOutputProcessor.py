@@ -8,7 +8,7 @@ class FileOutputProcessor(BaseOutputProcessor):
         super(FileOutputProcessor, self).__init__(var_list, sample_interval)
     
     def pre_run(self):
-        self.h5file = h5py.File(filename, 'w')
+        self.h5file = h5py.File(self.fname, 'w')
         self.h5file.create_dataset('metadata',(),'i')
         self.h5file['metadata'].attrs['start_time'] = self.start_time
         self.h5file['metadata'].attrs['sample_interval'] = self.sample_interval
@@ -18,7 +18,7 @@ class FileOutputProcessor(BaseOutputProcessor):
         for var,d in self.variables.items():
             self.h5file.create_dataset(var+'/data', (0,len(d['uids'])),\
                         d['output'].dtype, maxshape=(None,len(d['uids'])))
-            self.h5file.create_dataset(var+'/uids', data=d['uids'])
+            self.h5file.create_dataset(var+'/uids', data=np.array(d['uids']))
             
     def process_output(self):
         for var, d in self.variables():

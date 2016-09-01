@@ -4,7 +4,7 @@ import numpy as np
 
 from neurokernel.LPU import LPU
 
-class BaseInputProcessor(Object):
+class BaseInputProcessor(object):
     def __init__(self, var_list, mode=0):
         # var_list should be a list of (variable, uids)
         # If no uids is provided, the variable will be ignored
@@ -21,7 +21,8 @@ class BaseInputProcessor(Object):
         # mode = 1 => persist with previous input if no input is available
         self.mode = mode
         self.input_to_be_processed = True
-        
+        self.dtypes = {}
+    
     @property
     def LPU_obj(self):
         return self._LPU_obj
@@ -88,10 +89,10 @@ class BaseInputProcessor(Object):
                         break
                 assert(found_pre)
             self.dest_inds[var] = np.array(inds,np.int32)
-            self._d_input[var] = garray.zeros(len(d['uids']),
-                                              v_dict['buffer'].dtype)
+            self.dtypes[var] = v_dict['buffer'].dtype
+            self._d_input[var] = garray.zeros(len(d['uids']),self.dtypes[var])
             self.variables[var]['input'] = np.zeros(len(d['uids']),
-                                                    v_dict['buffer'].dtype)
+                                                    self.dtypes[var])
         self.pre_run()
 
     def pre_run(self):
