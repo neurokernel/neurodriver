@@ -1,4 +1,3 @@
-import h5py
 import numpy as np
 
 from BaseInputProcessor import BaseInputProcessor
@@ -17,6 +16,6 @@ class StepInputProcessor(BaseInputProcessor):
             
     def is_input_available(self):
         return (self.LPU_obj.time >= self.start and
-                self.LPU_obj.time < self.start)
+                self.LPU_obj.time < self.stop)
 
     
