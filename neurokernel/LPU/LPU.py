@@ -576,6 +576,8 @@ class LPU(Module):
             models.remove('Port')
         except:
             pass
+
+        
         deps = {i:[] for i in range(len(models))}
         for i in range(len(models)):
             for j in range(i+1,len(models)):
@@ -589,6 +591,7 @@ class LPU(Module):
                     else:
                         deps[i].append(j)
 
+        
         self.exec_order = []
         for i, model in enumerate(models):
             if not model in self.exec_order: self.exec_order.append(model)
@@ -602,8 +605,22 @@ class LPU(Module):
                 except ValueError:
                     self.exec_order.insert(self.exec_order.index(model),
                                            models[j])
-
         
+        var_mod = {}
+        for i, model in enumerate(models):
+            for var in self._comps[model]['updates']:
+                if not var in var_mod: var_mod[var] = []
+                var_mod[var].insert(model)
+
+        self.model_var_inj = {}
+        for var, models in var_mod.items():
+            i = 0
+            for model in models:
+                i = max(self.exec_order.index(model),i)
+            if not self.exec_order[i] in self.model_var_inj:
+                self.model_var_inj[self.exec_order[i]] = []
+            self.model_var_inj[self.exec_order[i]].append(var)
+                
         # Add input processors
             
         
@@ -862,7 +879,8 @@ class LPU(Module):
     
         # Update input ports
         self._read_LPU_input()
-        
+
+        # Fetch updated input if available from all input processors
         for p in self.input_processors: p.run_step()
         
         # Call run_step of components
@@ -874,7 +892,13 @@ class LPU(Module):
                 update_pointers[var] = int(buff.gpudata)+buff.current*buff.ld*\
                                        buff.dtype.itemsize
             self.components[model].run_step(update_pointers)
-
+            # Inject Input for any variable that has been completely updated
+            # at this step
+            if model in self.model_var_inj:
+                for p in self.input_processors:
+                    for var in self.model_var_inj[model]:
+                        p.inject_input(var)
+                        
         
         # Process output processors
         for p in self.output_processors: p.run_step()
