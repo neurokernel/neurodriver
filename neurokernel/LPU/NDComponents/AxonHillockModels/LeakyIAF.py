@@ -53,7 +53,7 @@ __global__ void leaky_iaf(
 
 class LeakyIAF(BaseAxonHillockModel):
     def __init__(self, params_dict, access_buffers, dt,
-                 debug=False, LPU=None, cuda_verbose=False):
+                 debug=False, LPU_id=None, cuda_verbose=False):
         if cuda_verbose:
             self.compile_options = ['--ptxas-options=-v']
         else:
@@ -65,13 +65,13 @@ class LeakyIAF(BaseAxonHillockModel):
         self.dt = np.double(dt)
         self.steps = 1
         self.debug = debug
-        self.LPU = LPU
+        self.LPU_id = LPU_id
         self.I = garray.zeros_like(params_dict['V'])
         self.update = self.get_gpu_kernel(params_dict['V'].dtype)
 
     def pre_run(self, update_pointers):
         cuda.memcpy_dtod(int(update_pointers['V']),
-                         self.params_dict['V'],
+                         self.params_dict['V'].gpudata,
                          self.params_dict['V'].nbytes)
     
     def run_step(self, update_pointers, st=None):
@@ -89,7 +89,7 @@ class LeakyIAF(BaseAxonHillockModel):
             self.params_dict['Vr'].gpudata,                 #P
             self.params_dict['R'].gpudata,                  #P
             self.params_dict['C'].gpudata)                  #P
-
+        
     def get_gpu_kernel( self, dtype=np.double):
         self.gpu_block = (128, 1, 1)
         self.gpu_grid = ((self.num_neurons - 1) / self.gpu_block[0] + 1, 1)

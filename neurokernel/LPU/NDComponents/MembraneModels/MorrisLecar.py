@@ -7,7 +7,7 @@ import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
 class MorrisLecar(BaseMembraneModel):
-    def __init__(self, params_dict, access_buffers, dt, LPU=None,
+    def __init__(self, params_dict, access_buffers, dt, LPU_id=None,
                  debug=False, cuda_verbose=False):
         if cuda_verbose:
             self.compile_options = ['--ptxas-options=-v']
@@ -21,13 +21,13 @@ class MorrisLecar(BaseMembraneModel):
         self.debug = debug
         self.ddt = dt / self.steps
 
-        self.LPU = LPU
+        self.LPU_id = LPU_id
 
         # TODO: use LPU object to request memory from memory_manager
         # for even internal states
         self.I = garray.zeros_like(params_dict['initV'])
         self.n = garray.empty_like(params_dict['initn'])
-        cuda.memcpy_dtod(self.n, params_dict['initn'],
+        cuda.memcpy_dtod(self.n.gpudata, params_dict['initn'].gpudata,
                          params_dict['initn'].nbytes)
 
         self.params_dict = params_dict
@@ -36,7 +36,7 @@ class MorrisLecar(BaseMembraneModel):
 
     def pre_run(self, update_pointers):
         cuda.memcpy_dtod(int(update_pointers['V']),
-                         self.params_dict['initV'],
+                         self.params_dict['initV'].gpudata,
                          self.params_dict['initV'].nbytes)
         
 
@@ -92,32 +92,20 @@ class MorrisLecar(BaseMembraneModel):
 
 
     __global__ void
-    hhn_euler_multiple(%(type)s* g_V, %(type)s* delay, %(type)s* g_n, int num_neurons, 
-                       %(type)s* I_pre, int ld, int current, int buffer_length,
-                       %(type)s dt, int nsteps,
+    hhn_euler_multiple(%(type)s* g_V, %(type)s* g_n, int num_neurons, 
+                       %(type)s* I, %(type)s dt, int nsteps,
                        %(type)s* V_1, %(type)s* V_2, %(type)s* V_3, 
-                       %(type)s* V_4, %(type)s* Tphi, %(type)s* offset,
-                       int* pre, int* cumpre, int* npre)
+                       %(type)s* V_4, %(type)s* Tphi, %(type)s* offset)
     {
         int bid = blockIdx.x;
         int cart_id = bid * NNEU + threadIdx.x;
 
-        %(type)s I, V, n;
+        %(type)s  V, n;
         int dl;
         int col; 
         if(cart_id < num_neurons)
         {
             V = g_V[cart_id];
-            I = 0;
-            for(int i=cumpre[cart_id]; i< cumpre[cart_id]+npre[cart_id]; i++){
-              dl = delay[i];
-              col = current - dl;
-              if(col < 0)
-              {
-                col = buffer_length + col;
-              }
-              I += I_pre[col*ld + pre[i]];
-            }
             n = g_n[cart_id];
 
             %(type)s dV, dn;
@@ -126,7 +114,7 @@ class MorrisLecar(BaseMembraneModel):
             for(int i = 0; i < nsteps; ++i)
             {
                dn = compute_n(V, n, V_3[cart_id], V_4[cart_id], Tphi[cart_id]);
-               dV = compute_V(V, n, I, V_1[cart_id], V_2[cart_id], offset[cart_id]);
+               dV = compute_V(V, n, I[cart_id], V_1[cart_id], V_2[cart_id], offset[cart_id]);
 
                V += dV * dt;
                n += dn * dt;

@@ -1,6 +1,7 @@
 import utils.parray as parray
 import numpy as np
 import pycuda.gpuarray as garray
+import numbers
 
 class MemoryManager(object):
     def __init__(self,devices=None):
@@ -40,21 +41,23 @@ class MemoryManager(object):
 
         for k, v in param_dict.items():
             if k in ['pre','npre','cumpre']:
-                self.paramaters[model_name][k] = \
+                self.parameters[model_name][k] = \
                                 {var: garray.to_gpu(np.array(v[var],np.int32))\
                                  for var in v.keys()}
                 continue
             if k=='conn_data':
                 cd = {}
                 for var,data in v.items():
+                    cd[var] = {}
                     for d_key,d in data.items():
-                        if not all([isnumeric(i) for i in d]): continue
+                        if not all([isinstance(i,numbers.Number) for i in d]):
+                            continue
                         if d_key=='delay':
                             cd[var][d_key] = garray.to_gpu(np.array(d, np.int32))
                         else:
                             cd[var][d_key] = garray.to_gpu(np.array(d, dtype))
                 self.parameters[model_name]['conn_data'] = cd
-            if not all([isnumeric(i) for i in v]): continue
+            if not all([isinstance(i,numbers.Number) for i in v]): continue
             self.parameters[model_name][k] = garray.to_gpu(np.array(v, dtype))
             
     def step(self):
@@ -97,7 +100,9 @@ class CircularArray(object):
     def __init__(self, size, buffer_length, dtype=np.double, init=None):
 
         self.size = size
+        if not isinstance(dtype, np.dtype): dtype = np.dtype(np.double)
         self.dtype = dtype
+        
         self.buffer_length = buffer_length
         if init:
             try:
@@ -113,6 +118,7 @@ class CircularArray(object):
         self.current = 0
         self.gpudata = self.parr.gpudata
         self.ld = self.parr.ld
+        
         
     def step(self):
         """

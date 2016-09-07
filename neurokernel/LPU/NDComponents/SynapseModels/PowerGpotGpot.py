@@ -10,7 +10,7 @@ from pycuda.compiler import SourceModule
 #This class assumes a single pre synaptic connection per component instance
 class PowerGPotGPot(BaseSynapseModel):
     def __init__(self, params_dict, access_buffers, dt,
-                 LPU=None, debug=False, cuda_verbose=False):
+                 LPU_id=None, debug=False, cuda_verbose=False):
         if cuda_verbose:
             self.compile_options = ['--ptxas-options=-v']
         else:
@@ -20,7 +20,7 @@ class PowerGPotGPot(BaseSynapseModel):
         self.dt = dt
         self.params_dict = params_dict
         self.access_buffers = access_buffers
-        self.LPU = LPU
+        self.LPU_id = LPU_id
 
         self.num_synapse = params_dict['threshold'].size
         self.update_func = self.get_update_func()
@@ -44,7 +44,7 @@ class PowerGPotGPot(BaseSynapseModel):
                 
 
 
-    def get_update_func(self, dtype):
+    def get_update_func(self, dtype=np.double):
         template = """
         #define N_synapse %(n_synapse)d
 
@@ -57,7 +57,6 @@ class PowerGPotGPot(BaseSynapseModel):
             int tid = threadIdx.x + blockIdx.x * blockDim.x;
             int total_threads = gridDim.x * blockDim.x;
 
-            int p;
             double mem;
             int dl;
             int col;

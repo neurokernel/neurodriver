@@ -24,19 +24,19 @@ __global__ void alpha_synapse(
     %(type)s *a1,
     %(type)s *a2,
     %(type)s *cond,
-    %(type)s *pre,
-    %(type)s *npre,
-    %(type)s *cumpre,
+    int *Pre,
+    int *npre,
+    int *cumpre,
     int* delay)
 {
     int tid = threadIdx.x + blockIdx.x*blockDim.x;
     int tot_threads = gridDim.x * blockDim.x;
-    int pre;
     %(type)s ar,ad,gmax;
     %(type)s old_a[3];
     %(type)s new_a[3];
+    int pre;
 
-    int dl, col;
+    int col;
     for( int i=tid; i<num; i+=tot_threads ){
         // copy data from global memory to register
         if(npre[i]){
@@ -49,7 +49,7 @@ __global__ void alpha_synapse(
             // update the alpha function
             new_a[0] = fmax( 0., old_a[0] + dt*old_a[1] );
             new_a[1] = old_a[1] + dt*old_a[2];
-            col = current-int(dl);
+            col = current-delay[i];
             if(col < 0)
             {
                 col = buffer_length + col;
@@ -74,9 +74,10 @@ __global__ void alpha_synapse(
 }
 """
 class AlphaSynapse(BaseSynapseModel):
-
+    accesses = ['spike_state']
+    
     def __init__( self, params_dict, access_buffers, dt,
-                  LPU=None, debug=False, cuda_verbose=False):
+                  LPU_id=None, debug=False, cuda_verbose=False):
         if cuda_verbose:
             self.compile_options = ['--ptxas-options=-v']
         else:
@@ -85,7 +86,7 @@ class AlphaSynapse(BaseSynapseModel):
         self.debug = debug
         self.dt = dt
         self.num = params_dict['gmax'].size
-        self.LPU = LPU
+        self.LPU_id = LPU_id
         
         self.params_dict = params_dict
         self.access_buffers = access_buffers

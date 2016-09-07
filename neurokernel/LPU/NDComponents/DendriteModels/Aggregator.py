@@ -17,7 +17,7 @@ class Aggregator(BaseDendriteModel):
     updates = ['I']
 
     def __init__(self, params_dict, access_buffers, dt, debug=False,
-                 LPU=None, cuda_verbose=False):
+                 LPU_id=None, cuda_verbose=False):
         if cuda_verbose:
             self.compile_options = ['--ptxas-options=-v']
         else:
@@ -28,12 +28,12 @@ class Aggregator(BaseDendriteModel):
         self.params_dict = params_dict
         self.debug = debug
         self.dt = dt
-        self.LPU = LPU
+        self.LPU_id = LPU_id
         
         self.num_comps = params_dict['pre']['V'].size
 
         
-        self.update = self.get_update_func(self.access_buffers['g'].buffer.dtype)
+        self.update = self.get_update_func(self.access_buffers['g'].dtype)
             
     def run_step(self, update_pointers, st=None):
         self.update.prepared_async_call(\
@@ -62,13 +62,12 @@ class Aggregator(BaseDendriteModel):
                                     int buffer_length, int* delay,
                                     %(type)s* V_rev, int* pre, int* npre,
                                     int* cumpre, %(type)s* V, int V_ld,
-                                    int V_current, int* V_pre, %(type)* I)
+                                    int V_current, int* V_pre, %(type)s* I)
         {
             // must use block size (32, 32, 1)
             int tidx = threadIdx.x;
             int tidy = threadIdx.y;
             int bid = blockIdx.x;
-
             int comp;
 
             __shared__ int num_pre[32];
@@ -82,7 +81,7 @@ class Aggregator(BaseDendriteModel):
                 if(comp < NUM_COMPS)
                 {
                     num_pre[tidx] = npre[comp];
-                    V_in[tidx] = V[V_pre[V_current*V_ld+comp]];
+                    V_in[tidx] = V[V_pre[comp]+V_current*V_ld];
                 }
             } else if(tidy == 1)
             {
@@ -158,10 +157,10 @@ class Aggregator(BaseDendriteModel):
             }
         }
         """
-        mod = SourceModule(template % {"num_neurons": self.num_comps,
+        mod = SourceModule(template % {"num_comps": self.num_comps,
                                        "type": dtype_to_ctype(dtype)}, 
                            options=self.compile_options)
-        func = mod.get_function("aggregrate_I")
+        func = mod.get_function("aggregate_I")
         func.prepare('PiiiPPPPPPiiPP')
         self.block = (32, 32, 1)
         self.grid = ((self.num_comps - 1) / 32 + 1, 1)

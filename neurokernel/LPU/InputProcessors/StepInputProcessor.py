@@ -4,7 +4,7 @@ import numpy as np
 from BaseInputProcessor import BaseInputProcessor
 class StepInputProcessor(BaseInputProcessor):
     def __init__(self, variable, uids, val, start, stop):
-        super(StepInputProcessor, self).__init__([(var,uids)], mode=0)
+        super(StepInputProcessor, self).__init__([(variable,uids)], mode=0)
         self.val = val
         self.start = start
         self.stop = stop
@@ -17,9 +17,8 @@ class StepInputProcessor(BaseInputProcessor):
             
     def is_input_available(self):
         return (self.LPU_obj.time >= self.start and
-                self.LPU_obj.time < self.start)
+                self.LPU_obj.time < self.stop)
         
     def post_run(self):
-        self.h5file.close()
-
+        pass
     

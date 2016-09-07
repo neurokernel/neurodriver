@@ -20,7 +20,8 @@ class NDComponent(object):
     updates = []
     
     @abstractmethod
-    def __init__(self, params_dict, access_buffers, dt, debug=False, LPU=None, cuda_verbose=False):
+    def __init__(self, params_dict, access_buffers, dt, debug=False,
+                 LPU_id=None, cuda_verbose=False):
         pass
         
     @abstractmethod
@@ -37,8 +38,10 @@ class NDComponent(object):
         '''
         pass
     
-    def sum_in_variable(self, var, garr):
-        if not self.sum_kernel:
+    def sum_in_variable(self, var, garr, st=None):
+        try:
+            a = self.sum_kernel
+        except AttributeError:
             self.sum_kernel = self.__get_sum_kernel(garr.size, garr.dtype)
         self.sum_kernel.prepared_async_call(
             self.__grid_sum, self.__block_sum, st,
@@ -51,7 +54,7 @@ class NDComponent(object):
             self.access_buffers[var].ld,                           #i
             self.access_buffers[var].current,                      #i
             self.access_buffers[var].buffer_length)                #i
-            
+        
     def __get_sum_kernel(self, num_comps, dtype=np.double):
         template = """
         #define NUM_COMPS %(num_comps)d
@@ -100,7 +103,7 @@ class NDComponent(object):
 
                for(int i = tidx; i < n_pre; i += 32)
                {
-                   dl = delay[pre[start]+i];
+                   dl = delay[i];
                    col = current - dl;
                    if(col < 0)
                    {

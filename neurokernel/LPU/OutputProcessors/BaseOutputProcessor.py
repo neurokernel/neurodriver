@@ -1,6 +1,8 @@
 import pycuda.gpuarray as garray
 import numpy as np
 from neurokernel.LPU import LPU
+from pycuda.tools import dtype_to_ctype
+import pycuda.elementwise as elementwise
 
 class BaseOutputProcessor(object):
     def __init__(self, var_list, sample_interval=1):
@@ -18,6 +20,7 @@ class BaseOutputProcessor(object):
         self.epoch = 0
         self.src_inds = {}
         self._LPU_obj = None
+        self._d_output = {}
         
     @property
     def LPU_obj(self):
@@ -38,7 +41,7 @@ class BaseOutputProcessor(object):
             self.epoch = 0
             for var, d in self.variables.items():
                 buff = self.memory_manager.get_buffer(var)
-                self.get_inds(buff.gpudata, self._d_output[var],
+                self.get_inds(buff.parr, self._d_output[var],
                               self.src_inds[var], buff.ld*buff.current)
                 d['output'] = self._d_output[var].get()
             self.process_output()
