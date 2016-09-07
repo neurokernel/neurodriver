@@ -1,7 +1,7 @@
 import numpy as np
 import h5py
 from datetime import datetime
-
+from neurokernel.LPU.OutputProcessors.BaseOutputProcessor import BaseOutputProcessor
 class FileOutputProcessor(BaseOutputProcessor):
     def __init__(self, var_list, filename, sample_interval=1):
         self.fname = filename
@@ -21,7 +21,7 @@ class FileOutputProcessor(BaseOutputProcessor):
             self.h5file.create_dataset(var+'/uids', data=np.array(d['uids']))
             
     def process_output(self):
-        for var, d in self.variables():
+        for var, d in self.variables.items():
             self.h5file[var+'/data'].resize((self.h5file[var+'/data'].shape[0]+1,
                                              len(d['uids'])))
             self.h5file[var+'/data'][-1,:] = d['output'].reshape((1,-1))
