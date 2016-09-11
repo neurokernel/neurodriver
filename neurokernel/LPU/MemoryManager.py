@@ -100,7 +100,7 @@ class CircularArray(object):
     def __init__(self, size, buffer_length, dtype=np.double, init=None):
 
         self.size = size
-        if not isinstance(dtype, np.dtype): dtype = np.dtype(np.double)
+        if not isinstance(dtype, np.dtype): dtype = np.dtype(dtype)
         self.dtype = dtype
         
         self.buffer_length = buffer_length
