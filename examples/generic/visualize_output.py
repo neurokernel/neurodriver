@@ -14,6 +14,7 @@ import numpy as np
 import matplotlib as mpl
 mpl.use('agg')
 
+import h5py
 import neurokernel.LPU.utils.visualizer as vis
 import networkx as nx
 
@@ -22,32 +23,39 @@ nx.readwrite.gexf.GEXF.convert_bool = {'false':False, 'False':False,
 
 # Select IDs of spiking projection neurons:
 G = nx.read_gexf('./data/generic_lpu.gexf.gz')
-neu_proj = sorted([int(k) for k, n in G.node.items() if \
+neu_proj = sorted([k for k, n in G.node.items() if \
                    n['name'][:4] == 'proj' and \
                    n['spiking']])
+
+in_uid = 0
+for k, n in G.node.items():
+    if 'extern' in n and n['extern']:
+        in_uid = k
+        break
+        
 N = len(neu_proj)
 
 V = vis.visualizer()
-V.add_LPU('./data/generic_input.h5', LPU='Sensory')
-V.add_plot({'type':'waveform', 'ids': [[0]]}, 'input_Sensory')
+V.add_LPU('./data/generic_input.h5', LPU='Sensory', is_input=True)
+V.add_plot({'type':'waveform', 'uids': [[in_uid]],'variable':'I'},
+           'input_Sensory')
 
-V.add_LPU('generic_output_spike.h5',
-          './data/generic_lpu.gexf.gz', 'Generic LPU')
-V.add_plot({'type':'raster', 'ids': {0: range(N)},
+V.add_LPU('new_output.h5',  'Generic LPU',
+          gexf_file='./data/generic_lpu.gexf.gz')
+V.add_plot({'type':'raster', 'uids': [neu_proj], 'variable': 'spike_state',
             'yticks': range(1, 1+N),
-            'yticklabels': neu_proj},
-            'Generic LPU','Output')
+            'yticklabels': neu_proj, 'title': 'Output'},
+            'Generic LPU')
 
 V.rows = 2
 V.cols = 1
 V.fontsize = 18
-V.dt = 0.0001
 V.xlim = [0, 1.0]
 
-gen_video = False
+gen_video = True
 if gen_video:
-    V.out_filename = 'generic_output.avi'
-    V.codec = 'libtheora'
+    V.out_filename = 'generic_output.mp4'
+    V.codec = 'mpeg4'
     V.run()
 else:
     V.update_interval = None

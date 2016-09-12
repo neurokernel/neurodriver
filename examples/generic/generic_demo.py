@@ -21,6 +21,10 @@ import neurokernel.core_gpu as core
 
 from neurokernel.LPU.LPU import LPU
 
+from neurokernel.LPU.InputProcessors.StepInputProcessor import StepInputProcessor
+from neurokernel.LPU.InputProcessors.FileInputProcessor import FileInputProcessor
+from neurokernel.LPU.OutputProcessors.FileOutputProcessor import FileOutputProcessor
+
 import neurokernel.mpi_relaunch
 
 dt = 1e-4
@@ -49,13 +53,17 @@ logger = setup_logger(file_name=file_name, screen=screen)
 
 man = core.Manager()
 
-(n_dict, s_dict) = LPU.lpu_parser('./data/generic_lpu.gexf.gz')
+(comp_dict, conns) = LPU.lpu_parser_legacy('./data/generic_lpu.gexf.gz')
 
-man.add(LPU, 'ge', dt, n_dict, s_dict,
-        input_file='./data/generic_input.h5',
-        output_file='generic_output.h5', 
-        device=args.gpu_dev,
-        debug=args.debug)
+#st_input_processor = StepInputProcessor('I', ['73','74','75','76','77'] , 10, 0.1,0.4)
+fl_input_processor = FileInputProcessor('./data/generic_input.h5')
+fl_output_processor = FileOutputProcessor([('V',None),('spike_state',None),('I',None)], 'new_output.h5', sample_interval=1)
+'''
+a = LPU(dt, comp_dict, conns, device=args.gpu_dev, input_processors = [st_input_processor], id='ge')
+'''
+man.add(LPU, 'ge', dt, comp_dict, conns,
+        device=args.gpu_dev, input_processors = [fl_input_processor],
+        output_processors = [fl_output_processor], debug=args.debug)
 
 man.spawn()
 man.start(steps=args.steps)

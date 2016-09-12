@@ -117,13 +117,9 @@ def create_lpu_graph(lpu_name, N_sensory, N_local, N_proj):
         if data['public'] == False:
             if data['spiking']:
                 G.add_node(idx, {
-                    'name': 'port_in_spk_%s' % spk_in_id,
+                    'name': '/%s/in/spk/%s' % (lpu_name, idx),
                     'model': 'port_in_spk',
-                    'selector': '/%s/in/spk/%s' % (lpu_name, idx),
-                    'spiking': True,
-                    'public': False,
-                    'extern': False,
-                    'circuit': G.node[i]['circuit']
+                    'selector': '/%s/in/spk/%s' % (lpu_name, idx)
                 })
                 spk_in_id += 1
                 G.add_edge(idx, i, attr_dict={
@@ -138,13 +134,9 @@ def create_lpu_graph(lpu_name, N_sensory, N_local, N_proj):
                     'circuit': G.node[i]['circuit']})
             else:
                 G.add_node(idx, {
-                    'name': 'port_in_gpot_%s' % i,
+                    'name': '/%s/in/gpot/%s' % (lpu_name, idx),
                     'model': 'port_in_gpot',
-                    'selector': '/%s/in/gpot/%s' % (lpu_name, idx),
-                    'spiking': False,
-                    'public': False,
-                    'extern': False,
-                    'circuit': G.node[i]['circuit']
+                    'selector': '/%s/in/gpot/%s' % (lpu_name, idx)
                 })
                 gpot_in_id += 1
                 G.add_edge(idx, i, attr_dict={
@@ -162,6 +154,7 @@ def create_lpu_graph(lpu_name, N_sensory, N_local, N_proj):
 
         idx += 1
 
+    
     # Assume a probability of synapse existence for each group of synapses:
     # sensory -> local, sensory -> projection, local -> projection, 
     # projection -> local:            
@@ -253,8 +246,8 @@ def create_input(file_name, N_sensory, dt=1e-4, dur=1.0, start=0.3, stop=0.6, I_
     ----------
     file_name : str
         Name of output HDF5 file.
-    N_sensory : int
-        Number of sensory neurons.
+    g: networkx.MultiDiGraph
+        NetworkX graph object representing the LPU
     dt : float
         Time resolution of generated signal.
     dur : float
@@ -270,14 +263,24 @@ def create_input(file_name, N_sensory, dt=1e-4, dur=1.0, start=0.3, stop=0.6, I_
     Nt = int(dur/dt)
     t  = np.arange(0, dt*Nt, dt)
 
+
+    uids = []
+    for id, data in g.nodes(data=True):
+        if 'extern' in data and data['extern']:
+            uids.append(id)
+
+    N_sensory = len(uids)
+    uids = np.array(uids)        
+    
     I  = np.zeros((Nt, N_sensory), dtype=np.float64)
     I[np.logical_and(t>start, t<stop)] = I_max
 
     with h5py.File(file_name, 'w') as f:
-        f.create_dataset('array', (Nt, N_sensory),
+        f.create_dataset('I/uids', data=uids)
+        f.create_dataset('I/data', (Nt, N_sensory),
                          dtype=np.float64,
                          data=I)
-
+    
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
@@ -301,5 +304,7 @@ if __name__ == '__main__':
     I_max = 0.6
     neu_num = [np.random.randint(31, 40) for i in xrange(3)]
 
-    create_input(args.in_file_name, neu_num[0], dt, dur, start, stop, I_max)
+    create_lpu(args.lpu_file_name, args.lpu, *neu_num)
+    g = nx.read_gexf(args.lpu_file_name)
+    create_input(args.in_file_name, g, dt, dur, start, stop, I_max)
     create_lpu(args.lpu_file_name, args.lpu, *neu_num)
