@@ -1,6 +1,9 @@
 import utils.parray as parray
-import numpy as np
 import pycuda.gpuarray as garray
+from pycuda.tools import dtype_to_ctype
+import pycuda.elementwise as elementwise
+
+import numpy as np
 import numbers
 
 class MemoryManager(object):
@@ -22,6 +25,45 @@ class MemoryManager(object):
     def mutate_variable(self, variable_name, transform):
         pass
 
+    def fill_zeros(self, variable=None, model=None):
+        # TODO: Cache dest_inds based on variable and model
+        assert(variable or model)
+        if variable and not model:
+            assert(variable in self.variables)
+            d = self.variables[variable]
+            dest_inds = np.arange(0, d['cumlen'][-1],1)
+            buff = d['buffer']
+            dest_mem = garray.GPUArray((1,buff.size),buff.dtype,
+                                       gpudata=int(buff.gpudata)+\
+                                       buff.current*buff.ld*\
+                                       buff.dtype.itemsize)
+            self._fill_zeros_kernel(dest_mem, garray.to_gpu(dest_inds))
+        elif model and not variable: 
+            for var, d in self.variables.iteritems():
+                if model in d['models']:
+                    mind = d['models'].index(model)
+                    stind = d['cumlen'][mind]
+                    dest_inds = np.arange(stind, stind+d['len'][mind],1)
+                    buff = d['buffer']
+                    dest_mem = garray.GPUArray((1,buff.size),buff.dtype,
+                                               gpudata=int(buff.gpudata)+\
+                                               buff.current*buff.ld*\
+                                               buff.dtype.itemsize)
+                    self._fill_zeros_kernel(dest_mem, garray.to_gpu(dest_inds))
+        else:
+            assert(variable in self.variables)
+            d = self.variables[variable]
+            if model in d['models']:
+                mind = d['models'].index(model)
+                stind = d['cumlen'][mind]
+                dest_inds = np.arange(stind, stind+d['len'][mind],1)
+                buff = d['buffer']
+                dest_mem = garray.GPUArray((1,buff.size),buff.dtype,
+                                           gpudata=int(buff.gpudata)+\
+                                           buff.current*buff.ld*\
+                                           buff.dtype.itemsize)
+                self._fill_zeros_kernel(dest_mem, garray.to_gpu(dest_inds))
+        
     def mutate_parameter(self, model_name, param, transform):
         pass
 
@@ -63,7 +105,27 @@ class MemoryManager(object):
     def step(self):
         for d in self.variables.values():
             d['buffer'].step()
-            
+
+    def _fill_zeros_kernel(self, dest, inds):
+        """
+        Set `dest[inds[i]] = 0 for i in range(len(inds))`
+        """
+
+        try:
+            func = self._fill_zeros_kernel.cache[(inds.dtype, dest.dtype)]
+        except KeyError:
+            inds_ctype = dtype_to_ctype(inds.dtype)
+            data_ctype = dtype_to_ctype(dest.dtype)
+            v = ("{data_ctype} *dest," +\
+                 "{inds_ctype} *inds").format(\
+                        data_ctype=data_ctype,inds_ctype=inds_ctype)
+            func = elementwise.ElementwiseKernel(v,\
+            "dest[inds[i]] =0")
+            self._fill_zeros_kernel.cache[(inds.dtype, dest.dtype)] = func
+        func(dest, inds, range=slice(0, len(inds), 1) )
+
+    _fill_zeros_kernel.cache = {}
+
 class CircularArray(object):
     """
     Circular buffer to support variables with memory
