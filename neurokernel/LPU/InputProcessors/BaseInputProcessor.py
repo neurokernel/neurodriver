@@ -45,7 +45,7 @@ class BaseInputProcessor(object):
             elif self.mode == 1:
                 self.input_to_be_processed = True
             else:
-                self.input_to_be_processed = True
+                self.input_to_be_processed = False
                 self.LPU_obj.log_info("Invalid mode for Input Processor. " +\
                                       "Defaulting to mode 0(zero input)")
             return
@@ -63,7 +63,6 @@ class BaseInputProcessor(object):
                                    gpudata=int(buff.gpudata)+\
                                    buff.current*buff.ld*\
                                    buff.dtype.itemsize)
-            
         self.add_inds(self._d_input[var], dest_mem, self.dest_inds[var])
         
     # Should be implemented by child class
@@ -93,7 +92,7 @@ class BaseInputProcessor(object):
             self.variables[var]['input'] = np.zeros(len(d['uids']),
                                                     self.dtypes[var])
         self.pre_run()
-
+        
     def pre_run(self):
         pass
 
