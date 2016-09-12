@@ -61,9 +61,10 @@ class visualizer(object):
         self._fontsize = 18
         self._t = 0
         self._dts = {}
+        self._sample_intervals = {}
+        self._start_times = {}
         self._data = {}
         self._uids = {}
-        self._sample_intervals = {}
         self._maxt = None
         self._title = None
         self._FFMpeg = None
@@ -123,14 +124,22 @@ class visualizer(object):
             for k, d in f.items():
                 self._uids[LPU][k] = f[k]['uids'].value
                 self._data[LPU][k] = np.transpose(f[k]['data'].value)
+                
             self._config[LPU] = []
+            if self._maxt:
+                self._maxt = min(self._maxt,
+                                 (self._data[LPU][k].shape[1]-1)*self._dts[LPU])
+            else:
+                self._maxt = (self._data[LPU][k].shape[1]-1)*self._dts[LPU]    
+            f.close()
+            return
 
         self._config[LPU] = []
         f = h5py.File(data_file)
             
         self._sample_intervals[LPU] = f['metadata'].attrs['sample_interval']
         self._dts[LPU] = f['metadata'].attrs['dt'] * self._sample_intervals[LPU]
-        self._start_times = f['metadata'].attrs['start_time']
+        self._start_times[LPU] = f['metadata'].attrs['start_time']
         self._uids[LPU] = {}
         self._data[LPU] = {}
         for k, d in f.items():
@@ -147,7 +156,8 @@ class visualizer(object):
                              (self._data[LPU][k].shape[1]-1)*self._dts[LPU])
         else:
             self._maxt = (self._data[LPU][k].shape[1]-1)*self._dts[LPU]
-
+        f.close()
+        
     def run(self, final_frame_name=None, dpi=300):
         """
         Starts the visualization process.
@@ -332,7 +342,8 @@ class visualizer(object):
                     config['handle'].axes.set_yticks([])
                     eps = np.finfo(float).eps
                     config['handle'].axes.set_xticks(\
-                        np.arange(0, self._maxt+eps,float(self._maxt)/10))
+                            np.linspace(0+self._start_times[LPU],
+                                        self._start_times[LPU]+self._maxt,11))
                 elif config['type'] == 6:
                     self.axarr[ind].axes.set_yticks([])
                     self.axarr[ind].axes.set_xticks([])
@@ -439,8 +450,8 @@ class visualizer(object):
                         s = int(round(float(t-self._update_interval)/dt))
                         e = int(round(float(t)/dt))
                         config['ydata'].extend(
-                            np.reshape(np.float(data[config['ids'][0], \
-                                        max(0,s):min(e,data.shape[1])],(-1,))))
+                            np.reshape(np.double(data[config['ids'][0], \
+                                        max(0,s):min(e,data.shape[1])]),(-1,)))
                         config['handle'].set_xdata(dt* np.arange(0, \
                                 len(config['ydata']))+self._start_times[LPU])
                         config['handle'].set_ydata(np.asarray(config['ydata']))
@@ -453,8 +464,10 @@ class visualizer(object):
                         s = int(round(float(t-self._update_interval)/dt))
                         e = int(round(float(t)/dt))
                         for tind in np.where(data[id, \
-                                    max(0,s):min(e,data.shape[1])])[0]:
-                            config['handle'].vlines(float(t-tind*dt),j+0.75, j+1.25)
+                            max(0,s):min(e,data.shape[1])])[0]:
+                            shift = self._start_times[LPU]
+                            config['handle'].vlines(float(shift+t-tind*dt),
+                                                    j+0.75, j+1.25)
                 elif config['type'] == 0:
                     if int(round(float(t)/dt)) >= data.shape[1] : continue
                     ind = int(round(float(t)/dt))
@@ -591,11 +604,11 @@ class visualizer(object):
         config = config_dict.copy()
         assert('variable' in config)
         var = config['variable']
-        if not (isinstance(config['uids'], list) or 
-                isinstance(config['uids'], np.ndarray)):
-            config['uids'] = [config['uids']]
         assert(LPU in self._uids and LPU in self._data)
         if 'uids' in config:
+            if not (isinstance(config['uids'], list) or 
+                    isinstance(config['uids'], np.ndarray)):
+                config['uids'] = [config['uids']]
             config['ids'] = []
             for uids in config['uids']:
                 config['ids'].append([np.where(self._uids[LPU][var]==uid)[0][0]
