@@ -235,13 +235,14 @@ class LPU(Module):
         """
         Return selectors of non-spiking input ports.
         """
-        if not 'Port' in comp_dict: return ''
+        if not 'Port' in comp_dict: return ('',[])
         a = zip(*[(sel,uid) for sel,ptype,io,uid in \
                          zip(comp_dict['Port']['selector'],
                              comp_dict['Port']['port_type'],
                              comp_dict['Port']['port_io'],
                              comp_dict['Port'][uid_key]) if ptype=='gpot' \
-                         and io=='in'])
+                  and io=='in'])
+        if not a: a = ('',[])
         return a
         
     @classmethod
@@ -249,13 +250,14 @@ class LPU(Module):
         """
         Return selectors of spiking input ports.
         """
-        if not 'Port' in comp_dict: return ''
+        if not 'Port' in comp_dict: return ('',[])
         a = zip(*[(sel,uid) for sel,ptype,io,uid in \
                          zip(comp_dict['Port']['selector'],
                              comp_dict['Port']['port_type'],
                              comp_dict['Port']['port_io'],
                              comp_dict['Port'][uid_key]) if ptype=='spike' \
                          and io=='in'])
+        if not a: a = ('',[])
         return a
 
     @classmethod
@@ -263,13 +265,14 @@ class LPU(Module):
         """
         Return selectors of non-spiking output neurons.
         """
-        if not 'Port' in comp_dict: return ''
+        if not 'Port' in comp_dict: return ('',[])
         a = zip(*[(sel,uid) for sel,ptype,io,uid in \
                          zip(comp_dict['Port']['selector'],
                              comp_dict['Port']['port_type'],
                              comp_dict['Port']['port_io'],
                              comp_dict['Port'][uid_key]) if ptype=='gpot' \
-                         and io=='out'])
+                  and io=='out'])
+        if not a: a = ('',[])
         return a
         
     @classmethod
@@ -277,13 +280,14 @@ class LPU(Module):
         """
         Return selectors of spiking output neurons.
         """
-        if not 'Port' in comp_dict: return ''
+        if not 'Port' in comp_dict: return ('',[])
         a = zip(*[(sel,uid) for sel,ptype,io,uid in \
                          zip(comp_dict['Port']['selector'],
                              comp_dict['Port']['port_type'],
                              comp_dict['Port']['port_io'],
                              comp_dict['Port'][uid_key]) if ptype=='spike' \
-                         and io=='out'])
+                  and io=='out'])
+        if not a: a = ('',[])
         return a
 
     @classmethod
@@ -405,7 +409,7 @@ class LPU(Module):
 
         # Ignore models without implementation
         for model in comp_dict.keys():
-            if not model in self._comps and not model=='Port':
+            if not model in self._comps and not model in ['Port','Input']:
                 self.log_info("Ignoring Model %s: Can not find implementation"
                               % model)
                 del comp_dict[model]
@@ -414,7 +418,6 @@ class LPU(Module):
         self.variable_delay_map = {}
         
         # Generate a uid to model map of components
-        # and a uid to position in the model map
         self.uid_model_map = {}
         for model,attribs in comp_dict.iteritems():
             for i,uid in enumerate(attribs[uid_key]):
@@ -571,13 +574,36 @@ class LPU(Module):
                 self.conn_dict[post][var] = {k:[] for k in ['pre'] + data.keys()}
             self.conn_dict[post][var]['pre'].append(pre)
             for k in data.keys(): self.conn_dict[post][var][k].append(data[k])
-        
+
+        # Add connections for component with no incoming connections
+        for uid, model in self.uid_model_map.iteritems():
+            if not uid in self.conn_dict and not model == 'Port':
+                pre = self.generate_uid(input=True)
+                self.gen_uids.append(pre)
+                var = self._comps[model]['accesses'][0]
+                if not var in self.variable_delay_map:
+                    self.variable_delay_map[var]=0
+                self.conn_dict[uid] = {var: {'pre':[pre],'delay':[0]}}
+                if not 'Input' in comp_dict:
+                    comp_dict['Input'] = {}
+                if not var in comp_dict['Input']:
+                    comp_dict['Input'][var] = {self.uid_key: []}
+                comp_dict['Input'][var][self.uid_key].append(pre)
+                    
         # Optimize ordering (TODO)
         self.uid_ind_map = {m:{uid:i for i,uid in enumerate(n[uid_key])}
-                            for m,n in comp_dict.items()}
-        
+                            for m,n in comp_dict.items() if not m=='Input'}
+
+        if 'Input' in comp_dict:
+            self.uid_ind_map['Input'] = {var:{uid:i for i, uid in enumerate(d[uid_key])}
+                                         for var, d in comp_dict['Input'].items()}
         # Reorder components
         for m, n in comp_dict.items():
+            if m=='Input':
+                for var, d in n.items():
+                    order = np.argsort([self.uid_ind_map[m][var][uid] for uid in d[uid_key]])
+                    d[uid_key] = [d[uid_key][i] for i in order]
+                continue
             order = np.argsort([self.uid_ind_map[m][uid] for uid in n[uid_key]])
             for k in n.keys(): n[k] = [n[k][i] for i in order]
             
@@ -591,6 +617,11 @@ class LPU(Module):
         models = comp_dict.keys()
         try:
             models.remove('Port')
+        except:
+            pass
+
+        try:
+            models.remove('Input')
         except:
             pass
 
@@ -669,7 +700,9 @@ class LPU(Module):
         self.models = {m:i for i,(m,_) in enumerate(self.comp_list)}
         
         # Number of components of each model:
-        self.model_num = [len(n[uid_key]) for _, n in self.comp_list]
+        self.model_num = [len(n[uid_key]) if not m=='Input' else
+                          len(sum([d[uid_key] for d in n.values()],[]))
+                          for m, n in self.comp_list]
 
         data_gpot = np.zeros(len(self.in_gpot_uids)+len(self.out_gpot_uids),
                              self.default_dtype)
@@ -696,10 +729,16 @@ class LPU(Module):
         self.out_spk_inds = np.array(self.pm['spike'].ports_to_inds(\
                                     ','.join(self.sel_out_spk)), dtype=np.int32)
 
-    def generate_uid(self):
-        uid = 'auto_' + str(np.random.randint(100000))
-        while uid in self.gen_uids:
+    def generate_uid(self, input=False):
+        if input:
+            uid = 'input_' + str(np.random.randint(100000))
+        else:
             uid = 'auto_' + str(np.random.randint(100000))
+        while uid in self.gen_uids:
+            if input:
+                uid = 'input_' + str(np.random.randint(100000))
+            else:
+                uid = 'auto_' + str(np.random.randint(100000))
         return uid
     
     def pre_run(self):
@@ -712,7 +751,7 @@ class LPU(Module):
         self.components = {}
         # Instantiate components
         for model in self.models:
-            if model=='Port': continue
+            if model in ['Port','Input']: continue
             self.components[model] = self._instantiate_component(model)
             update_pointers = {}
             for var in self._comps[model]['updates']:
@@ -823,7 +862,7 @@ class LPU(Module):
                                         
     def init_parameters(self):
         for m, n in self.comp_list:
-            if not m=='Port':
+            if not m in ['Port','Input']:
                 nn = n.copy()
                 nn.pop(self.uid_key)
                 self.memory_manager.params_htod(m, nn, self.default_dtype)
@@ -831,7 +870,16 @@ class LPU(Module):
     def init_variable_memory(self):
         var_info = {}
         for (model, attribs) in self.comp_list:
-            if model=='Port': continue
+            if model in ['Port']: continue
+            # Add memory for external inputs if required
+            if model == 'Input':
+                for var, d in attribs.iteritems():
+                    if not var in var_info:
+                        var_info[var] = {'models':[],'len':[],'delay':0,'uids':[]}
+                    var_info[var]['models'].append('Input')
+                    var_info[var]['len'].append(len(d[self.uid_key]))
+                    var_info[var]['uids'].extend(d[self.uid_key])
+                continue
             for var in self._comps[model]['updates']:
                 if not var in var_info:
                     var_info[var] = {'models':[],'len':[],'delay':0,'uids':[]}
@@ -847,6 +895,8 @@ class LPU(Module):
             var_info[var]['len'].append(len(self.in_port_vars[var]))
             var_info[var]['uids'].extend(self.in_port_vars[var])
 
+        
+
         for var in self.variable_delay_map.keys():
             var_info[var]['delay'] = self.variable_delay_map[var]
         for var, d in var_info.items():
@@ -857,7 +907,7 @@ class LPU(Module):
         
     def process_connections(self):
         for (model, attribs) in self.comp_list:
-            if model=='Port': continue
+            if model in ['Port','Input']: continue
             pre = {var:[] for var in self._comps[model]['accesses']}
             npre = {var:[] for var in self._comps[model]['accesses']}
             data = {var:{} for var in self._comps[model]['accesses']}
@@ -890,7 +940,6 @@ class LPU(Module):
             attribs['npre'] = npre
             attribs['conn_data'] = data
             
-            
     def post_run(self):
         super(LPU, self).post_run()
         for comp in self.components.values():
@@ -906,6 +955,7 @@ class LPU(Module):
         # Update input ports
         self._read_LPU_input()
 
+        
         # Fetch updated input if available from all input processors
         for p in self.input_processors: p.run_step()
         
@@ -925,6 +975,8 @@ class LPU(Module):
             if model in self.model_var_inj:
                 for p in self.input_processors:
                     for var in self.model_var_inj[model]:
+                        # Reset memory for external input to zero if present
+                        self.memory_manager.fill_zeros(model='Input', variable=var)
                         p.inject_input(var)
                         
         
