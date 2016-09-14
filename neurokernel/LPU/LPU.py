@@ -437,6 +437,7 @@ class LPU(Module):
         for conn in conn_list:
             pre = conn[0]
             post = conn[1]
+            if not (pre in self.uid_model_map and post in self.uid_model_map): continue
             pre_model = self.uid_model_map[pre]
             post_model = self.uid_model_map[post]
             pre_updates = self._comps[pre_model]['updates'] \
