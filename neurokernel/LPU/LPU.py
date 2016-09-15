@@ -374,7 +374,7 @@ class LPU(Module):
                  spike_tag=SPIKE_TAG, rank_to_id=None, routing_table=None,
                  uid_key='id', debug=False, columns=['io', 'type', 'interface'],
                  cuda_verbose=False, time_sync=False, default_dtype=np.double,
-                 control_inteface=None, id=None):
+                 control_inteface=None, id=None, extra_comps=[]):
 
         LoggerMixin.__init__(self, 'LPU {}'.format(id))
 
@@ -405,7 +405,7 @@ class LPU(Module):
         self.uid_key = uid_key
         
         # Load all NDComponents:
-        self._load_components()
+        self._load_components(extra_comps=extra_comps)
 
         # Ignore models without implementation
         for model in comp_dict.keys():
@@ -1105,7 +1105,7 @@ class LPU(Module):
                    cuda_verbose=bool(self.compile_options))
 
 
-    def _load_components(self):
+    def _load_components(self, extra_comps=[]):
         """
         Load all available NDcomponents
         """
@@ -1113,6 +1113,8 @@ class LPU(Module):
         comp_classes = child_classes[:]
         for cls in child_classes:
             comp_classes.extend(cls.__subclasses__())
+        for cls in extra_comps:
+            comp_classes.extend(cls)
         self._comps = {cls.__name__:{'accesses': cls.accesses ,
                                      'updates':cls.updates,
                                      'cls':cls} \
