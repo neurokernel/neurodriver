@@ -578,13 +578,15 @@ class LPU(Module):
 
         # Add connections for component with no incoming connections
         for uid, model in self.uid_model_map.iteritems():
-            if not uid in self.conn_dict and not model == 'Port':
+            var = self._comps[model]['accesses'][0]
+            if ((not uid in self.conn_dict or not var in self.conn_dict[uid])
+                and not model == 'Port'):
                 pre = self.generate_uid(input=True)
                 self.gen_uids.append(pre)
-                var = self._comps[model]['accesses'][0]
                 if not var in self.variable_delay_map:
                     self.variable_delay_map[var]=0
-                self.conn_dict[uid] = {var: {'pre':[pre],'delay':[0]}}
+                if not uid in self.conn_dict: self.conn_dict[uid] = {}
+                self.conn_dict[uid][var] = {'pre':[pre],'delay':[0]}
                 if not 'Input' in comp_dict:
                     comp_dict['Input'] = {}
                 if not var in comp_dict['Input']:
