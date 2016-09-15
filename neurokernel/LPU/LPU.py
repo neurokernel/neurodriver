@@ -866,8 +866,17 @@ class LPU(Module):
             if not m in ['Port','Input']:
                 nn = n.copy()
                 nn.pop(self.uid_key)
-                self.memory_manager.params_htod(m, nn, self.default_dtype)
-            
+                # copy integer and boolean parameters into separate dictionary
+                nn_int = {k:v for k, v in nn.iteritems() if len(v) and
+                          type(v[0]) in [int, long, bool]} 
+                nn_rest = {k:v for k, v in nn.iteritems() if len(v) and
+                           type(v[0]) not in [int, long, bool]}
+                if nn_int:
+                    self.memory_manager.params_htod(m, nn_int, np.int32)
+                if nn_rest:
+                    self.memory_manager.params_htod(m, nn_rest,
+                                                    self.default_dtype)
+
     def init_variable_memory(self):
         var_info = {}
         for (model, attribs) in self.comp_list:
