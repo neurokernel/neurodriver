@@ -671,8 +671,15 @@ class LPU(Module):
             if not self.exec_order[i] in self.model_var_inj:
                 self.model_var_inj[self.exec_order[i]] = []
             self.model_var_inj[self.exec_order[i]].append(var)
-                
 
+        #Variables not updated by any component (for example those coming from
+        #external input or Ports) are slated to be injected at the end of a step
+        for var in self.variable_delay_map:
+            if not var in var_mod:
+                if not self.exec_order[-1] in self.model_var_inj:
+                    self.model_var_inj[self.exec_order[-1]] = []
+                self.model_var_inj[self.exec_order[-1]].append(var)
+                    
         # Get selectors of input ports:
         self.sel_in_gpot, self.in_gpot_uids = self.extract_in_gpot(comp_dict,
                                                                    self.uid_key)
@@ -983,7 +990,7 @@ class LPU(Module):
                                             shift)*buff.dtype.itemsize
             self.components[model].run_step(update_pointers)
             # Inject Input for any variable that has been completely updated
-            # at this step
+            # at this point
             if model in self.model_var_inj:
                 for p in self.input_processors:
                     for var in self.model_var_inj[model]:
