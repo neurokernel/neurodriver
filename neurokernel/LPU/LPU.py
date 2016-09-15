@@ -578,7 +578,10 @@ class LPU(Module):
 
         # Add connections for component with no incoming connections
         for uid, model in self.uid_model_map.iteritems():
-            var = self._comps[model]['accesses'][0]
+            if not model == 'Port':
+                var = self._comps[model]['accesses'][0]
+            else:
+                var = ''
             if ((not uid in self.conn_dict or not var in self.conn_dict[uid])
                 and not model == 'Port'):
                 pre = self.generate_uid(input=True)
@@ -876,10 +879,11 @@ class LPU(Module):
                 nn = n.copy()
                 nn.pop(self.uid_key)
                 # copy integer and boolean parameters into separate dictionary
-                nn_int = {k:v for k, v in nn.iteritems() if len(v) and
-                          type(v[0]) in [int, long, bool]} 
-                nn_rest = {k:v for k, v in nn.iteritems() if len(v) and
-                           type(v[0]) not in [int, long, bool]}
+                nn_int = {k:v for k, v in nn.iteritems() if (isinstance(v, list)
+                            and len(v) and type(v[0]) in [int, long, bool])}
+                nn_rest = {k:v for k, v in nn.iteritems() if (
+                           (not isinstance(v, list)) or (len(v) and
+                           type(v[0]) not in [int, long, bool]))}
                 if nn_int:
                     self.memory_manager.params_htod(m, nn_int, np.int32)
                 if nn_rest:
