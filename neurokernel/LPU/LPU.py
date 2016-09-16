@@ -1113,8 +1113,7 @@ class LPU(Module):
         comp_classes = child_classes[:]
         for cls in child_classes:
             comp_classes.extend(cls.__subclasses__())
-        for cls in extra_comps:
-            comp_classes.extend(cls)
+        comp_classes.extend(extra_comps)
         self._comps = {cls.__name__:{'accesses': cls.accesses ,
                                      'updates':cls.updates,
                                      'cls':cls} \
