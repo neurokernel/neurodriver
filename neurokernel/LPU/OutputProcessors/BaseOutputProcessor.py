@@ -1,7 +1,7 @@
 import pycuda.gpuarray as garray
 import numpy as np
 from neurokernel.LPU.LPU import LPU
-from pycuda.tools import dtype_to_ctype
+from pycuda.tools import dtype_to_ctype, context_dependent_memoize
 import pycuda.elementwise as elementwise
 
 class BaseOutputProcessor(object):
@@ -70,7 +70,7 @@ class BaseOutputProcessor(object):
                         pass
                 inds = np.array(inds,np.int32)
                 o = np.argsort(inds)
-                self.src_inds[var] = inds[o]
+                self.src_inds[var] = garray.to_gpu(inds[o])
                 d['uids'] = [uids[i] for i in o]
             self._d_output[var] = garray.empty(len(d['uids']),
                                                v_dict['buffer'].dtype)
@@ -95,17 +95,17 @@ class BaseOutputProcessor(object):
         """
 
         assert src.dtype == dest.dtype
-        try:
-            func = self.get_inds.cache[(inds.dtype, src.dtype)]
-        except KeyError:
-            inds_ctype = dtype_to_ctype(inds.dtype)
-            data_ctype = dtype_to_ctype(src.dtype)
-            v = ("{data_ctype} *dest, int src_shift, " +\
-                 "{inds_ctype} *inds, {data_ctype} *src").format(\
-                        data_ctype=data_ctype,inds_ctype=inds_ctype)
-            func = elementwise.ElementwiseKernel(v,\
-                            "dest[i] = src[src_shift+inds[i]]")
-            self.get_inds.cache[(inds.dtype, src.dtype)] = func
+        inds_ctype = dtype_to_ctype(inds.dtype)
+        data_ctype = dtype_to_ctype(src.dtype)
+        
+        func = get_inds_kernel(inds_ctype, data_ctype)
         func(dest, int(src_shift), inds, src, range=slice(0, len(inds), 1) )
 
-    get_inds.cache = {}
+@context_dependent_memoize
+def get_inds_kernel(inds_ctype, src_ctype):
+    v = ("{data_ctype} *dest, int src_shift, " +\
+         "{inds_ctype} *inds, {data_ctype} *src").format(\
+                data_ctype=src_ctype,inds_ctype=inds_ctype)
+    func = elementwise.ElementwiseKernel(v,\
+                    "dest[i] = src[src_shift+inds[i]]")
+    return func
