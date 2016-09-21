@@ -522,7 +522,8 @@ class LPU(Module):
                         data['variable'] = post_accesses[0]
                     if not data['variable'] in self.in_port_vars:
                         self.in_port_vars[data['variable']] = []
-                    self.in_port_vars[data['variable']].append(pre)
+                    if pre not in self.in_port_vars[data['variable']]:
+                        self.in_port_vars[data['variable']].append(pre)
                     conns.append((pre, post, data))
                     self.variable_delay_map[data['variable']] = max(data['delay'],
                             self.variable_delay_map[data['variable']] if \
