@@ -65,16 +65,12 @@ class MorrisLecar(BaseMembraneModel):
     #define NNEU %(nneu)d //NROW * NCOL
 
 
-    #define V_L (-0.05)
-    #define V_Ca 0.1
-    #define V_K (-0.07)
+    #define V_L (-50.0)
+    #define V_Ca 100.0
+    #define V_K (-80.0)
     #define g_Ca 1.1
     #define g_K 2.0
     #define g_L 0.5
-
-
-
-
 
     __device__ %(type)s compute_n(%(type)s V, %(type)s n, %(type)s V_3, %(type)s V_4, %(type)s Tphi)
     {
