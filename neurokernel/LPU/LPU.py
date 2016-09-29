@@ -154,8 +154,36 @@ class LPU(Module):
 
         Returns
         -------
-        comp_dict, conns
-        TODO: Update
+        comp_dict : dict
+            A dictionary of components of which
+            keys are model names, and
+            values are dictionaries of parameters/attributes associated
+            with the model.
+            Keys of a dictionary of parameters are the names of them,
+            and values of corresponding keys are lists of value of parameters.
+            One of the parameters is called 'id' and by default it
+            uses the id of the node in the graph.
+            If uid_keys is specified, id will use the specified parameter.
+            Therefore, comp_dict has the following structure:
+            
+            comp_dict = {}
+                comp_dict[model_name_1] = {}
+                    comp_dict[model_name_1][parameter_1] = []
+                    ...
+                    comp_dict[model_name_1][parameter_N] = []
+                    comp_dict[model_name_1][id] = []
+                
+                ...
+                
+                comp_dict[model_name_M] = {}
+                    comp_dict[model_name_M][parameter_1] = []
+                    ...
+                    comp_dict[model_name_M][parameter_N] = []
+                    comp_dict[model_name_M][id] = []
+            
+        conns : list
+            A list of edges contained in graph describing the relation
+            between components
 
         Example
         -------
@@ -181,7 +209,10 @@ class LPU(Module):
                 comp_dict[model] = {k:[] for k in comp.keys() + ['id']}
 
             # Same model should have the same attributes
-            assert(set(comp_dict[model].keys()) == set(comp.keys() + ['id']))
+            if not set(comp_dict[model].keys()) == set(comp.keys() + ['id']):
+                raise KeyError("keys of component does not match with that of "+\
+                               model+": "+ str(set(comp_dict[model].keys())) +
+                               str(set(comp.keys() + ['id'])))
 
             # add data to the subdictionary of comp_dict
             for key in comp.iterkeys():
