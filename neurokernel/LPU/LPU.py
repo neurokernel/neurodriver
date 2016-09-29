@@ -452,8 +452,8 @@ class LPU(Module):
                     if 'delay' in data.keys() else 0
             data['delay'] = delay
             
-            if pre_model == 'Aggregator':
-                agg_map[post] = pre
+            if post_model == 'Aggregator':
+                agg_map[post] = post
                 reverse_key = None
                 s = (set(['reverse','Vr','VR','reverse_potential'])&
                      set(data.keys()))
@@ -461,19 +461,42 @@ class LPU(Module):
                 if reverse_key:
                     reverse = data[reverse_key]
                 else:
-                    self.log_info('Assuming reverse potential ' + 
-                                  'to be zero for connection from' +
-                                  '%s to %s'%(pre,post))
-                    reverse = 0
-                    
+                    # else look in the attibutes of the synapse
+                    s = (set(['reverse','Vr','VR','reverse_potential'])&
+                         set(comp_dict[pre_model].keys()))
+                    if s: reverse_key = s.pop()
+                    if reverse_key:
+                        reverse = comp_dict[pre_model][reverse_key][\
+                                comp_dict[pre_model][uid_key].index(pre)]
+                        if 'g' in pre_updates:
+                            data['reverse'] = reverse
+                    else:
+                        if 'g' in pre_updates:
+                            self.log_info('Assuming reverse potential ' +
+                                          'to be zero for connection from' +
+                                          '%s to %s'%(pre,post))
+                            data['reverse'] = reverse
+                        reverse = 0
+            
                 if post in agg.keys():
-                    agg[post].append = {'pre':pre,'reverse':reverse,'variable':'g'}
+                    if 'g' in pre_updates:
+                        agg[post].append({'pre':pre,'reverse':reverse,
+                                          'variable':'g'})
+                    elif 'V' in pre_updates:
+                        agg[post].append({'pre':pre, 'variable':'V'})
                 else:
-                    agg[post] = [{'pre':pre,'reverse':reverse,'variable':'g'}]
-                self.variable_delay_map['g'] = max(data['delay'],
+                    # Make sure aggregator has access to postsynaptic voltage
+                    if 'g' in pre_updates:
+                        agg[post] = [{'pre':pre,'reverse':reverse,'variable':'g'}]
+                    elif 'V' in pre_updates:
+                        agg[post] = [{'pre':pre,'variable':'V'}]
+                
+                if 'g' in pre_updates:
+                    agg[post][-1].update({k:v for k,v in data.items()})
+                    self.variable_delay_map['g'] = max(data['delay'],
                                     self.variable_delay_map['g'] if 'g' in \
                                     self.variable_delay_map else 0)
-                agg[post][-1].update({k:v for k,v in data.items()})
+                
 
             # Ensure consistency
             # Insert Aggregator between g->V if required. Assume 'reverse' or
@@ -545,9 +568,9 @@ class LPU(Module):
             self.variable_delay_map[data['variable']] = max(data['delay'],
                             self.variable_delay_map[data['variable']] if \
                             data['variable'] in self.variable_delay_map else 0)
-                
-            conns.append((pre,post,data))
-
+            # connection to Aggregator will be added later
+            if not post_model == 'Aggregator':
+                conns.append((pre,post,data))
 
         if agg and not 'Aggregator' in comp_dict.keys():
             comp_dict['Aggregator'] = {uid_key: []}
@@ -558,11 +581,18 @@ class LPU(Module):
             uid = agg_map[post]
             if uid not in comp_dict['Aggregator'][uid_key]:
                 comp_dict['Aggregator'][uid_key].append(uid)
+                comp_dict['Aggregator']['label'].append(str(uid))
+                comp_dict['Aggregator']['name'].append(str(uid))
                 self.uid_model_map[uid] = 'Aggregator'
             for conn in conn_list:
                 conns.append((conn['pre'],uid,{k:v for k,v in conn.items()
                                                if k!='pre'}))
-            conns.append((uid,post,{'variable':'I', 'delay': 0}))
+            # Add a 'I' connection between Aggregator and neuron if they are
+            # automatically generated.
+            # This can be checking if the 'pre' attribute in the item
+            # in conn_list with 'variable' 'V' is the same neuron as post
+            if post == [tmp['pre'] for tmp in conn_list if tmp['variable']=='V'][0]:
+                conns.append((uid,post,{'variable':'I', 'delay': 0}))
         
         self.conn_dict = {}
 
@@ -590,7 +620,11 @@ class LPU(Module):
                 if not var in self.variable_delay_map:
                     self.variable_delay_map[var]=0
                 if not uid in self.conn_dict: self.conn_dict[uid] = {}
-                self.conn_dict[uid][var] = {'pre':[pre],'delay':[0]}
+                if model == 'Aggregator' and var == 'g':
+                    self.conn_dict[uid][var] = {'pre':[pre],'delay':[0],
+                                                'id': [0], 'reverse': [0]}
+                else:
+                    self.conn_dict[uid][var] = {'pre':[pre],'delay':[0]}
                 if not 'Input' in comp_dict:
                     comp_dict['Input'] = {}
                 if not var in comp_dict['Input']:
@@ -604,6 +638,7 @@ class LPU(Module):
         if 'Input' in comp_dict:
             self.uid_ind_map['Input'] = {var:{uid:i for i, uid in enumerate(d[uid_key])}
                                          for var, d in comp_dict['Input'].items()}
+
         # Reorder components
         for m, n in comp_dict.items():
             if m=='Input':
@@ -611,8 +646,10 @@ class LPU(Module):
                     order = np.argsort([self.uid_ind_map[m][var][uid] for uid in d[uid_key]])
                     d[uid_key] = [d[uid_key][i] for i in order]
                 continue
+
             order = np.argsort([self.uid_ind_map[m][uid] for uid in n[uid_key]])
-            for k in n.keys(): n[k] = [n[k][i] for i in order]
+            for k in n.keys():
+                n[k] = [n[k][i] for i in order]
             
         # Reorder input port variables
         for var, uids in self.in_port_vars.items():
