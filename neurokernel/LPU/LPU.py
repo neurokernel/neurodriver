@@ -197,35 +197,64 @@ class LPU(Module):
         comp_dict = {}
         comps = graph.node.items()
         
-        for id, comp in comps:
-            model = comp[class_key]
-
-            # For port, make sure selector is specified
+        all_component_types = list(set([comp[class_key] for uid, comp in comps]))
+        
+        for model in all_component_types:
+            sub_comps = [comp for comp in comps \
+                                   if comp[1][class_key] == model]
+            
+            all_keys = [set(comp[1].keys()) for comp in sub_comps]
+            key_intersection = set.intersection(*all_keys)
+            key_union = set.union(*all_keys)
+            
+            # For visually checking if any essential parameter is dropped
+            ignored_keys = list(key_union-key_intersection)
+            if ignored_keys:
+                print 'parameters of model {} ignored: {}'.format(model, ignored_keys)
+            
+            del all_keys
+            
+            sub_comp_keys = list(key_intersection)
+            
             if model == 'Port':
-                assert('selector' in comp.keys())
-                
-            # if the neuron model does not appear before, add it into n_dict
-            if model not in comp_dict:
-                comp_dict[model] = {k:[] for k in comp.keys() + ['id']}
-
-            # Same model should have the same attributes
-            if not set(comp_dict[model].keys()) == set(comp.keys() + ['id']):
-                raise KeyError("keys of component does not match with that of "+\
-                               model+": "+ str(set(comp_dict[model].keys())) +
-                               str(set(comp.keys() + ['id'])))
-
-            # add data to the subdictionary of comp_dict
-            for key in comp.iterkeys():
-                if not key==uid_key:
-                    comp_dict[model][key].append( comp[key] )
-            if uid_key:
-                comp_dict[model]['id'].append(comp[uid_key])
-            else:
-                comp_dict[model]['id'].append( id )
+                assert('selector' in sub_comp_keys)
+            
+            comp_dict[model] = {
+                k: [comp[k] for uid, comp in sub_comps] \
+                for k in sub_comp_keys if not k in [uid_key, class_key]}
+            
+            comp_dict[model]['id'] = [comp[uid_key] if uid_key else uid \
+                                      for uid, comp in sub_comps]
         
-        # Remove duplicate model information:
-        for val in comp_dict.itervalues(): val.pop(class_key)
-        
+#        for id, comp in comps:
+#            model = comp[class_key]
+#
+#            # For port, make sure selector is specified
+#            if model == 'Port':
+#                assert('selector' in comp.keys())
+#                
+#            # if the neuron model does not appear before, add it into n_dict
+#            if model not in comp_dict:
+#                comp_dict[model] = {k:[] for k in comp.keys() + ['id']}
+#
+#            # Same model should have the same attributes
+#            if not set(comp_dict[model].keys()) == set(comp.keys() + ['id']):
+#                raise KeyError("keys of component does not match with that of "+\
+#                               model+": "+ str(set(comp_dict[model].keys())) +
+#                               str(set(comp.keys() + ['id'])))
+#
+#            # add data to the subdictionary of comp_dict
+#            for key in comp.iterkeys():
+#                if not key==uid_key:
+#                    comp_dict[model][key].append( comp[key] )
+#            if uid_key:
+#                comp_dict[model]['id'].append(comp[uid_key])
+#            else:
+#                comp_dict[model]['id'].append( id )
+#        
+#        # Remove duplicate model information:
+#        for val in comp_dict.itervalues(): val.pop(class_key)
+
         # Extract connections
         conns = graph.edges(data=True)
         return comp_dict, conns
@@ -611,10 +640,11 @@ class LPU(Module):
         for post, conn_list  in agg.items():
             uid = agg_map[post]
             if uid not in comp_dict['Aggregator'][uid_key]:
+                keys = [k for k in comp_dict['Aggregator'].keys() if k != uid_key]
                 comp_dict['Aggregator'][uid_key].append(uid)
-                comp_dict['Aggregator']['label'].append(str(uid))
-                comp_dict['Aggregator']['name'].append(str(uid))
                 self.uid_model_map[uid] = 'Aggregator'
+                for k in keys:
+                    comp_dict['Aggregator'][k].append(str(uid))
             for conn in conn_list:
                 conns.append((conn['pre'],uid,{k:v for k,v in conn.items()
                                                if k!='pre'}))
@@ -653,7 +683,7 @@ class LPU(Module):
                 if not uid in self.conn_dict: self.conn_dict[uid] = {}
                 if model == 'Aggregator' and var == 'g':
                     self.conn_dict[uid][var] = {'pre':[pre],'delay':[0],
-                                                'id': [0], 'reverse': [0]}
+                                                'reverse': [0]} #'id': [0],
                 else:
                     self.conn_dict[uid][var] = {'pre':[pre],'delay':[0]}
                 if not 'Input' in comp_dict:
