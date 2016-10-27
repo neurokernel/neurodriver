@@ -14,6 +14,8 @@ import pycuda.elementwise as elementwise
 import numpy as np
 import networkx as nx
 
+#import time
+
 import copy
 import itertools
 import numbers
@@ -99,13 +101,13 @@ class LPU(Module):
                 
             if 'model' in data:
                 if data['model'] == 'port_in_gpot':
-                    for a in data.keys():
+                    for a in data:
                         if a!='selector': del data[a] 
                     data['class'] = 'Port'
                     data['port_type'] = 'gpot'
                     data['port_io'] = 'in'
                 elif data['model'] == 'port_in_spk':
-                    for a in data.keys():
+                    for a in data:
                         if a!='selector': del data[a]
                     data['class'] = 'Port'
                     data['port_type'] = 'spike'
@@ -468,7 +470,7 @@ class LPU(Module):
         self._load_components(extra_comps=extra_comps)
 
         # Ignore models without implementation
-        for model in comp_dict.keys():
+        for model in comp_dict:
             if not model in self._comps and not model in ['Port','Input']:
                 self.log_info("Ignoring Model %s: Can not find implementation"
                               % model)
@@ -488,10 +490,14 @@ class LPU(Module):
         agg_map = {}
         agg = {}
 
+        #start = time.time()
         
         conns = []
         self.in_port_vars = {}
         self.out_port_conns = []
+        comp_uid_order = {}
+        for model, attribs in comp_dict.items():
+            comp_uid_order[model] = {uid: i for i, uid in enumerate(attribs[uid_key])}
         # Process connections between components, remove inconsitent connections
         # calculate required delays, infer variable if required
         for conn in conn_list:
@@ -500,6 +506,7 @@ class LPU(Module):
             if not (pre in self.uid_model_map and post in self.uid_model_map): continue
             pre_model = self.uid_model_map[pre]
             post_model = self.uid_model_map[post]
+
             pre_updates = self._comps[pre_model]['updates'] \
                           if not pre_model=='Port' else []
             post_accesses = self._comps[post_model]['accesses'] \
@@ -509,7 +516,7 @@ class LPU(Module):
             
             # Update delay
             delay = int(round((data['delay']/dt))) \
-                    if 'delay' in data.keys() else 0
+                    if 'delay' in data else 0
             data['delay'] = delay
             
             if post_model == 'Aggregator':
@@ -527,7 +534,7 @@ class LPU(Module):
                     if s: reverse_key = s.pop()
                     if reverse_key:
                         reverse = comp_dict[pre_model][reverse_key][\
-                                comp_dict[pre_model][uid_key].index(pre)]
+                                comp_uid_order[pre_model][pre]]
                         if 'g' in pre_updates:
                             data['reverse'] = reverse
                     else:
@@ -535,10 +542,10 @@ class LPU(Module):
                             self.log_info('Assuming reverse potential ' +
                                           'to be zero for connection from' +
                                           '%s to %s'%(pre,post))
-                            data['reverse'] = reverse
+                            data['reverse'] = 0
                         reverse = 0
             
-                if post in agg.keys():
+                if post in agg:
                     if 'g' in pre_updates:
                         agg[post].append({'pre':pre,'reverse':reverse,
                                           'variable':'g'})
@@ -578,13 +585,13 @@ class LPU(Module):
                         if s: reverse_key = s.pop()
                         if reverse_key:
                             reverse = comp_dict[pre_model][reverse_key][\
-                                    comp_dict[pre_model][uid_key].index(pre)]
+                                    comp_uid_order[pre_model][pre]]
                         else:
                             self.log_info('Assuming reverse potential ' + 
                                           'to be zero for connection from' +
                                           '%s to %s'%(pre,post))
                             reverse = 0
-                    if post in agg.keys():
+                    if post in agg:
                         agg[post].append({'pre':pre,'reverse':reverse,
                                           'variable':'g'})
                     else:
@@ -601,7 +608,7 @@ class LPU(Module):
                                     self.variable_delay_map else 0)
                 
                 elif pre_model == 'Port':
-                    if not 'variable' in data.keys():
+                    if not 'variable' in data:
                         data['variable'] = post_accesses[0]
                     if not data['variable'] in self.in_port_vars:
                         self.in_port_vars[data['variable']] = []
@@ -612,14 +619,14 @@ class LPU(Module):
                             self.variable_delay_map[data['variable']] if \
                             data['variable'] in self.variable_delay_map else 0)
                 elif post_model == 'Port':
-                    if not 'variable' in data.keys():
+                    if not 'variable' in data:
                         data['variable'] = pre_updates[0]
                     self.out_port_conns.append((pre, post, data['variable']))
                 else:
                     self.log_info("Ignoring connection %s -> %s"%(pre,post))
                 continue
 
-            var = data['variable'] if 'variable' in data.keys() else None
+            var = data['variable'] if 'variable' in data else None
             if not var:
                 var = (set(pre_updates)&set(post_accesses)).pop()
             elif not (var in pre_updates and var in post_accesses):
@@ -632,7 +639,9 @@ class LPU(Module):
             if not post_model == 'Aggregator':
                 conns.append((pre,post,data))
 
-        if agg and not 'Aggregator' in comp_dict.keys():
+        #print self.LPU_id, "step 1:", time.time()-start
+
+        if agg and not 'Aggregator' in comp_dict:
             comp_dict['Aggregator'] = {uid_key: []}
             
         # Add updated aggregator components to component dictionary
@@ -655,18 +664,22 @@ class LPU(Module):
             if post == [tmp['pre'] for tmp in conn_list if tmp['variable']=='V'][0]:
                 conns.append((uid,post,{'variable':'I', 'delay': 0}))
         
+        #print self.LPU_id, "step 2:", time.time()-start
+
         self.conn_dict = {}
 
         # RePackage connections
         for (pre, post, data) in conns:
-            if not post in self.conn_dict.keys():
+            if not post in self.conn_dict:
                 self.conn_dict[post] = {}
             var = data['variable']
             data.pop('variable')
             if not var in self.conn_dict[post]:
                 self.conn_dict[post][var] = {k:[] for k in ['pre'] + data.keys()}
             self.conn_dict[post][var]['pre'].append(pre)
-            for k in data.keys(): self.conn_dict[post][var][k].append(data[k])
+            for k in data: self.conn_dict[post][var][k].append(data[k])
+
+        #print self.LPU_id, "step 3:", time.time()-start
 
         # Add connections for component with no incoming connections
         for uid, model in self.uid_model_map.iteritems():
@@ -691,7 +704,9 @@ class LPU(Module):
                 if not var in comp_dict['Input']:
                     comp_dict['Input'][var] = {self.uid_key: []}
                 comp_dict['Input'][var][self.uid_key].append(pre)
-                    
+
+        #print self.LPU_id, "step 4:", time.time()-start
+
         # Optimize ordering (TODO)
         self.uid_ind_map = {m:{uid:i for i,uid in enumerate(n[uid_key])}
                             for m,n in comp_dict.items() if not m=='Input'}
@@ -716,7 +731,9 @@ class LPU(Module):
         for var, uids in self.in_port_vars.items():
             order = np.argsort([self.uid_ind_map['Port'][uid] for uid in uids])
             self.in_port_vars[var] = [uids[i] for i in order]
-            
+
+        #print self.LPU_id, "step 5:", time.time()-start
+
         # Try to figure out order of stepping through components
         # If a loop of dependencies is present, update order behaviour is undefined
         models = comp_dict.keys()
@@ -854,11 +871,16 @@ class LPU(Module):
         return uid
     
     def pre_run(self):
+        #start = time.time()
         super(LPU, self).pre_run()
+        #print self.LPU_id, "step 6:", time.time()-start
         self.memory_manager = MemoryManager()
         self.init_variable_memory()
+        #print self.LPU_id, "step 7:", time.time()-start
         self.process_connections()
+        #print self.LPU_id, "step 8:", time.time()-start
         self.init_parameters()
+        #print self.LPU_id, "step 9:", time.time()-start
 
         self.components = {}
         # Instantiate components
@@ -873,7 +895,9 @@ class LPU(Module):
                 update_pointers[var] = int(buff.gpudata)+(buff.current*buff.ld+\
                                             shift)*buff.dtype.itemsize
             self.components[model].pre_run(update_pointers)
-                
+        
+        #print self.LPU_id, "step 10:", time.time()-start
+        
         # Setup ports
         self._setup_input_ports()
         self._setup_output_ports()
@@ -900,7 +924,7 @@ class LPU(Module):
                 self.out_var_inds_gpot[var] = []
                 self.out_port_inds_spk[var] = []
                 self.out_var_inds_spk[var] = []
-            ind = self.memory_manager.variables[var]['uids'].index(pre_uid)
+            ind = self.memory_manager.variables[var]['uids'][pre_uid]
             if post_uid in self.out_gpot_uids:
                 self.out_port_inds_gpot[var].append(self.out_gpot_inds[\
                                             self.out_gpot_uids.index(post_uid)])
@@ -1018,11 +1042,13 @@ class LPU(Module):
             var_info[var]['uids'].extend(self.in_port_vars[var])
 
         
-
+            
         for var in self.variable_delay_map.keys():
             var_info[var]['delay'] = self.variable_delay_map[var]
+            
         for var, d in var_info.items():
             d['cumlen'] = np.cumsum([0]+d['len'])
+            d['uids'] = {uid:i for i, uid in enumerate(d['uids'])}
             self.memory_manager.memory_alloc(var, d['cumlen'][-1], d['delay']+1,\
                 dtype=self.default_dtype if not var=='spike_state' else np.int32,
                 info=d)
@@ -1041,7 +1067,7 @@ class LPU(Module):
                             # Figure out index of the precomponent in the
                             # particular variable memory
                             p = self.conn_dict[uid][var]['pre'][i]
-                            ind = self.memory_manager.variables[var]['uids'].index(p)
+                            ind = self.memory_manager.variables[var]['uids'][p]
                             pre[var].append(ind)
                         
                             cnt[var] += 1
