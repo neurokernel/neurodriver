@@ -618,7 +618,9 @@ class visualizer(object):
             config['ids'] = [range(0, self._data[LPU][var].shape[0])]
             self._config[LPU].append(config)
         else:
-            raise ValueError('uids must be provided')
+            config['uids'] = self._uids[LPU][var]
+            config['ids'] = [[range(0,len(config['uids']))]]
+            #raise ValueError('uids must be provided')
             '''
             config['ids'] = {}
             for i,name in enumerate(names):
