@@ -85,7 +85,7 @@ class BaseInputProcessor(object):
                 cd = self.LPU_obj.conn_dict[uid]
                 assert(var in cd)
                 pre = cd[var]['pre'][0]
-                inds.append(v_dict['uids'].index(pre))
+                inds.append(v_dict['uids'][pre])
             self.dest_inds[var] = garray.to_gpu(np.array(inds,np.int32))
             self.dtypes[var] = v_dict['buffer'].dtype
             self._d_input[var] = garray.zeros(len(d['uids']),self.dtypes[var])

@@ -57,14 +57,17 @@ class BaseOutputProcessor(object):
         for var, d in self.variables.items():
             v_dict =  self.memory_manager.variables[var]
             if not d['uids']:
-                d['uids'] = v_dict['uids']
+                uids = v_dict['uids'].keys()
+                inds = v_dict['uids'].values()
+                o = np.argsort(inds)
+                d['uids'] = [uids[i] for i in o]
                 self.src_inds[var] = garray.to_gpu(np.arange(len(d['uids'])))
             else:
                 uids = []
                 inds = []
                 for uid in d['uids']:
                     try:
-                        inds.append(v_dict['uids'].index(uid))
+                        inds.append(v_dict['uids'][uid])
                         uids.append(uid)
                     except:
                         pass
