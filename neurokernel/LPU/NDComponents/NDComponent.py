@@ -110,7 +110,7 @@ class NDComponent(object):
                      col = buffer_length + col;
                    }
                                  
-                   input[tidy][tidx] += pre_buffer[col*ld + pre[start] + i];
+                   input[tidy][tidx] += pre_buffer[col*ld + pre[start+i]];
                }
             }
             __syncthreads();
