@@ -26,6 +26,7 @@ class BaseInputProcessor(object):
         self.dtypes = {}
         self._d_input = {}
         self.dest_inds = {}
+        self.valid_ids = []
         
     @property
     def LPU_obj(self):
@@ -81,11 +82,15 @@ class BaseInputProcessor(object):
             v_dict =  self.memory_manager.variables[var]
             uids = []
             inds = []
-            for uid in d['uids']:
+            for i,uid in enumerate(d['uids']):
                 cd = self.LPU_obj.conn_dict[uid]
-                assert(var in cd)
+                if(var not in cd):
+                    #Log
+                    continue
+                self.valid_ids.append(i)
                 pre = cd[var]['pre'][0]
                 inds.append(v_dict['uids'][pre])
+            self.valid_ids = np.array(self.valid_ids, np.int32)
             self.dest_inds[var] = garray.to_gpu(np.array(inds,np.int32))
             self.dtypes[var] = v_dict['buffer'].dtype
             self._d_input[var] = garray.zeros(len(d['uids']),self.dtypes[var])
