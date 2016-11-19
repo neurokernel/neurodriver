@@ -70,7 +70,7 @@ class visualizer(object):
         self._FFMpeg = None
 
     def add_LPU(self, data_file, LPU='', win=None, is_input=False,gexf_file=None,
-                sample_interval=1, start_time=0, dt=1e-4):
+                sample_interval=1, start_time=0, dt=1e-4, transpose_axes = [1,0]):
         """
         Add data associated with a specific LPU to a visualization.
 
@@ -123,7 +123,8 @@ class visualizer(object):
             self._data[LPU] = {}
             for k, d in f.items():
                 self._uids[LPU][k] = f[k]['uids'].value
-                self._data[LPU][k] = np.transpose(f[k]['data'].value)
+                self._data[LPU][k] = np.transpose(f[k]['data'].value,
+                                                  axes = transpose_axes)
                 
             self._config[LPU] = []
             if self._maxt:
@@ -145,8 +146,9 @@ class visualizer(object):
         for k, d in f.items():
             if k=='metadata': continue
             self._uids[LPU][k] = f[k]['uids'].value
-            self._data[LPU][k] = np.transpose(f[k]['data'].value)
-            
+            self._data[LPU][k] = np.transpose(f[k]['data'].value,
+                                              axes = transpose_axes)
+        
         if win is not None:
             for k in self._data[LPU].keys():
                 self._data[LPU][k] = self._data[LPU][k][:,win]
