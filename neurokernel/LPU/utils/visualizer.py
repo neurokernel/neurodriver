@@ -192,7 +192,7 @@ class visualizer(object):
             self._t = self._maxt
         if self._update_interval == -1:
             self._update_interval = max(np.asarray(self._dts.values()))*50
-        for _ in np.arange(self._t,self._maxt+np.finfo(float).eps,
+        for _ in np.arange(self._t,self._maxt*(1+np.finfo(float).eps),
                            self._update_interval):
             self._update()
         if final_frame_name is not None:
@@ -463,10 +463,11 @@ class visualizer(object):
                     for j, id in enumerate((config['ids'][0])):
                         s = int(round(float(t-self._update_interval)/dt))
                         e = int(round(float(t)/dt))
-                        for tind in np.where(data[id, \
-                            max(0,s):min(e,data.shape[1])])[0]:
+                        tmp = np.where(data[id, \
+                                      max(0,s):min(e,data.shape[1])])[0]
+                        for tind in tmp:
                             shift = self._start_times[LPU]
-                            config['handle'].vlines(float(shift+t-tind*dt),
+                            config['handle'].vlines(float(shift+tind*dt),
                                                     j+0.75, j+1.25)
                 elif config['type'] == 0:
                     if int(round(float(t)/dt)) >= data.shape[1] : continue
