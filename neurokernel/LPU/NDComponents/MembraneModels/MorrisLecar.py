@@ -1,12 +1,20 @@
-from BaseMembraneModel import BaseMembraneModel
+
+from collections import OrderedDict
 
 import numpy as np
+
 import pycuda.gpuarray as garray
 from pycuda.tools import dtype_to_ctype
 import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
+from BaseMembraneModel import BaseMembraneModel
+
 class MorrisLecar(BaseMembraneModel):
+    params = ['V1', 'V2', 'V3', 'V4', 'phi', 'offset',
+              'V_L', 'V_Ca', 'V_K', 'g_L', 'g_Ca', 'g_K']
+    internals = OrderedDict([('n', 0.3)])
+    
     def __init__(self, params_dict, access_buffers, dt, LPU_id=None,
                  debug=False, cuda_verbose=False):
         if cuda_verbose:
@@ -14,123 +22,140 @@ class MorrisLecar(BaseMembraneModel):
         else:
             self.compile_options = []
             
-        self.num_neurons = params_dict['V1'].size
-            
+        self.num_comps = params_dict['V1'].size
+        self.params_dict = params_dict
+        self.access_buffers = access_buffers
         self.dt = np.double(dt)
         self.steps = max(int(round(dt / 1e-5)), 1)
         self.debug = debug
+        self.LPU_id = LPU_id
+        self.dtype = params_dict['V1'].dtype
         self.ddt = dt / self.steps
 
-        self.LPU_id = LPU_id
-
-        # TODO: use LPU object to request memory from memory_manager
-        # for even internal states
-        self.I = garray.zeros_like(params_dict['initV'])
-        self.n = garray.empty_like(params_dict['initn'])
-        cuda.memcpy_dtod(self.n.gpudata, params_dict['initn'].gpudata,
-                         params_dict['initn'].nbytes)
-
-        self.params_dict = params_dict
-        self.access_buffers = access_buffers
-        self.update = self.get_euler_kernel(params_dict['initV'].dtype)
+        self.internal_states = {
+            c: garray.zeros(self.num_comps, dtype = self.dtype)+self.internals[c] \
+            for c in self.internals}
+        
+        self.inputs = {
+            k: garray.empty(self.num_comps, dtype = self.access_buffers[k].dtype)\
+            for k in self.accesses}
+        
+        dtypes = {'dt': self.dtype}
+        dtypes.update({k: self.inputs[k].dtype for k in self.accesses})
+        dtypes.update({k: self.params_dict[k].dtype for k in self.params})
+        dtypes.update({k: self.internal_states[k].dtype for k in self.internals})
+        dtypes.update({k: self.dtype if not k == 'spike_state' else np.int32 for k in self.updates})
+        self.update_func = self.get_update_func(dtypes)
 
     def pre_run(self, update_pointers):
+        #initializing
         cuda.memcpy_dtod(int(update_pointers['V']),
                          self.params_dict['initV'].gpudata,
                          self.params_dict['initV'].nbytes)
+        cuda.memcpy_dtod(self.internal_states['n'].gpudata,
+                         self.params_dict['initn'].gpudata,
+                         self.params_dict['initn'].nbytes)
         
 
     def run_step(self, update_pointers, st=None):
-        self.sum_in_variable('I', self.I)
-        self.update.prepared_async_call(
-            self.update_grid, self.update_block, st,
-            update_pointers['V'],
-            self.n.gpudata,
-            self.num_neurons,
-            self.I.gpudata,
-            self.ddt*1000,
-            self.steps,
-            self.params_dict['V1'].gpudata,
-            self.params_dict['V2'].gpudata,
-            self.params_dict['V3'].gpudata, 
-            self.params_dict['V4'].gpudata,
-            self.params_dict['phi'].gpudata,
-            self.params_dict['offset'].gpudata)
+        for k in self.inputs:
+            self.sum_in_variable(k, self.inputs[k], st=st)
+            
+        self.update_func.prepared_async_call(
+            self.update_func.grid, self.update_func.block, st,
+            self.num_comps, self.ddt*1000, self.steps,
+            *[self.inputs[k].gpudata for k in self.accesses]+\
+            [self.params_dict[k].gpudata for k in self.params]+\
+            [self.internal_states[k].gpudata for k in self.internals]+\
+            [update_pointers[k] for k in self.updates])
 
-
-    def get_euler_kernel(self, dtype=np.double):
+    def get_update_template(self):
         template = """
+__device__ %(n)s compute_n(%(V)s V, %(n)s n, %(V3)s V3, %(V4)s V4, %(phi)s phi)
+{
+    %(n)s n_inf = 0.5 * (1 + tanh((V - V3) / V4));
+    %(n)s dn = phi * cosh(( V - V3) / (V4*2)) * (n_inf - n);
+    return dn;
+}
 
-    #define NVAR 2
-    #define NNEU %(nneu)d //NROW * NCOL
+__device__ %(V)s compute_V(%(V)s V, %(n)s n, %(I)s I, %(V1)s V1, %(V2)s V2,
+                           %(offset)s offset, %(V_L)s V_L, %(V_Ca)s V_Ca,
+                           %(V_K)s V_K, %(g_L)s g_L, %(g_K)s g_K, %(g_Ca)s g_Ca)
+{
+    %(V)s m_inf = 0.5 * (1+tanh((V - V1)/V2));
+    %(V)s dV = (I - g_L * (V - V_L) - g_K * n * (V - V_K) - g_Ca * m_inf * (V - V_Ca) + offset);
+    return dV;
+}
 
+__global__ void
+morris_lecar_multiple(int num_comps, %(dt)s dt, int nsteps,
+                      %(I)s* g_I, %(V1)s* g_V1, %(V2)s* g_V2, %(V3)s* g_V3,
+                      %(V4)s* g_V4, %(phi)s* g_phi, %(offset)s* g_offset,
+                      %(V_L)s* g_V_L, %(V_Ca)s* g_V_Ca, %(V_K)s* g_V_K,
+                      %(g_L)s* g_g_L, %(g_Ca)s* g_g_Ca, %(g_K)s* g_g_K,
+                      %(n)s* g_n, %(V)s* g_V)
+{
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    int total_threads = gridDim.x * blockDim.x;
 
-    #define V_L (-50.0)
-    #define V_Ca 100.0
-    #define V_K (-80.0)
-    #define g_Ca 1.1
-    #define g_K 2.0
-    #define g_L 0.5
-
-    __device__ %(type)s compute_n(%(type)s V, %(type)s n, %(type)s V_3, %(type)s V_4, %(type)s Tphi)
+    %(V)s V, dV;
+    %(n)s n, dn;
+    %(I)s* I;
+    %(V1)s* V1;
+    %(V2)s* V2;
+    %(V3)s* V3;
+    %(V4)s* V4;
+    %(phi)s* phi;
+    %(offset)s* offset;
+    %(V_L)s* V_L;
+    %(V_Ca)s* V_Ca;
+    %(V_K)s* V_K;
+    %(g_L)s* g_L;
+    %(g_Ca)s* g_Ca;
+    %(g_K)s* g_K;
+    
+    for(int k = tid; k < num_comps; k += total_threads)
     {
-        %(type)s n_inf = 0.5 * (1 + tanh((V - V_3) / V_4));
-        %(type)s dn = Tphi * cosh(( V - V_3) / (V_4*2)) * (n_inf - n);
-        return dn;
-    }
-
-    __device__ %(type)s compute_V(%(type)s V, %(type)s n, %(type)s I, %(type)s V_1, %(type)s V_2, %(type)s offset)
-    {
-        %(type)s m_inf = 0.5 * (1+tanh((V - V_1)/V_2));
-        %(type)s dV = (I - g_L * (V - V_L) - g_K * n * (V - V_K) - g_Ca * m_inf * (V - V_Ca) + offset);
-        return dV;
-    }
-
-
-    __global__ void
-    hhn_euler_multiple(%(type)s* g_V, %(type)s* g_n, int num_neurons, 
-                       %(type)s* I, %(type)s dt, int nsteps,
-                       %(type)s* V_1, %(type)s* V_2, %(type)s* V_3, 
-                       %(type)s* V_4, %(type)s* Tphi, %(type)s* offset)
-    {
-        int bid = blockIdx.x;
-        int cart_id = bid * NNEU + threadIdx.x;
-
-        %(type)s  V, n;
-        int dl;
-        int col; 
-        if(cart_id < num_neurons)
+        V = g_V[k];
+        n = g_n[k];
+        V1 = g_V1[k];
+        V2 = g_V2[k];
+        V3 = g_V3[k];
+        V4 = g_V4[k];
+        phi = g_phi[k];
+        offset = g_offset[k];
+        V_L = g_V_L[k];
+        V_Ca = g_V_Ca[k];
+        V_K = g_V_K[k];
+        g_L = g_g_L[k];
+        g_Ca = g_g_Ca[k];
+        g_K = g_K[k];
+        
+        for(int i = 0; i < nsteps; ++i)
         {
-            V = g_V[cart_id];
-            n = g_n[cart_id];
-
-            %(type)s dV, dn;
-
-
-            for(int i = 0; i < nsteps; ++i)
-            {
-               dn = compute_n(V, n, V_3[cart_id], V_4[cart_id], Tphi[cart_id]);
-               dV = compute_V(V, n, I[cart_id], V_1[cart_id], V_2[cart_id], offset[cart_id]);
-
-               V += dV * dt;
-               n += dn * dt;
-            }
-
-
-            g_V[cart_id] = V;
-            g_n[cart_id] = n;
+            dn = compute_n(V, n, V3, V4, phi);
+            dV = compute_V(V, n, I, V1, V2,
+                           offset, V_L, V_Ca, V_K,
+                           g_Ca, g_K, g_L);
+            V += dV * dt;
+            n += dn * dt;
         }
-
+        
+        g_V[k] = V;
+        g_n[k] = n;
     }
-    """ 
-        scalartype = dtype.type if dtype.__class__ is np.dtype else dtype
-        self.update_block = (128, 1, 1)
-        self.update_grid = ((self.num_neurons - 1) / 128 + 1, 1)
-        mod = SourceModule(template % {"type": dtype_to_ctype(dtype),
-                           "nneu": self.update_block[0]}, 
+}
+"""
+        return template
+
+    def get_update_func(self, dtypes):
+        type_dict = {k: dtype_to_ctype(dtypes[k]) for k in dtypes}
+        type_dict.update({'fletter': 'f' if type_dict['V1'] == 'float' else ''})
+        mod = SourceModule(self.get_update_template() % type_dict,
                            options=self.compile_options)
-        func = mod.get_function("hhn_euler_multiple")
-
-
-        func.prepare('PPiP'+np.dtype(scalartype).char+'iPPPPPP')
+        func = mod.get_function("morris_lecar_multiple")
+        func.prepare('i'+np.dtype(dtypes['dt']).char+'i'+'P'*(len(type_dict)-2))
+        func.block = (256,1,1)
+        func.grid = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
+                         (self.num_comps-1) / 256 + 1), 1)
         return func
