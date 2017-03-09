@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+from abc import ABCMeta, abstractmethod, abstractproperty
+
 import numpy as np
 from pycuda.tools import dtype_to_ctype
 import pycuda.driver as cuda
