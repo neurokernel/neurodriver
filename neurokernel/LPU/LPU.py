@@ -470,11 +470,14 @@ class LPU(Module):
         self._load_components(extra_comps=extra_comps)
 
         # Ignore models without implementation
+        models_to_be_deleted = []
         for model in comp_dict:
             if not model in self._comps and not model in ['Port','Input']:
                 self.log_info("Ignoring Model %s: Can not find implementation"
                               % model)
-                del comp_dict[model]
+                models_to_be_deleted.append(model)
+        for model in models_to_be_deleted:
+            del comp_dict[model]
         
         # Assume zero delay by default
         self.variable_delay_map = {}
