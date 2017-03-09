@@ -71,11 +71,11 @@ class PowerGPotGPot(BaseSynapseModel):
                 
     def get_update_template(self):
         template = """
-__global__ void PowerGPotGPot(int num_comps, %(dt)s dt,
-                       %(V)s* g_V, %(threshold)s *g_threshold,
-                       %(slope)s *g_slope, %(power)s *g_power,
-                       %(saturation)s *g_saturation,
-                       %(g)s *g_g)
+__global__ void PowerGPotGPot(int num_comps, %(dt)s dt, int steps,
+                       %(V)s* g_V, %(threshold)s* g_threshold,
+                       %(slope)s* g_slope, %(power)s* g_power,
+                       %(saturation)s* g_saturation,
+                       %(g)s* g_g)
 {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int total_threads = gridDim.x * blockDim.x;
@@ -94,8 +94,8 @@ __global__ void PowerGPotGPot(int num_comps, %(dt)s dt,
         power = g_power[i];
         saturation = g_saturation[i];
         
-        g[i] = fmin(saturation,
-                    slope*pow(fmax(0.0,V-threshold),power));
+        g_g[i] = fmin%(fletter)s(saturation,
+                    slope*pow%(fletter)s(fmax(0.0,V-threshold),power));
     }
 }
 """
@@ -107,7 +107,7 @@ __global__ void PowerGPotGPot(int num_comps, %(dt)s dt,
         mod = SourceModule(self.get_update_template() % type_dict,
                            options=self.compile_options)
         func = mod.get_function("PowerGPotGPot")
-        func.prepare('i'+np.dtype(dtypes['dt']).char+'P'*(len(type_dict)-2))
+        func.prepare('i'+np.dtype(dtypes['dt']).char+'i'+'P'*(len(type_dict)-2))
         func.block = (256,1,1)
         func.grid = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
                          (self.num_comps-1) / 256 + 1), 1)
@@ -159,6 +159,7 @@ if __name__ == '__main__':
     G.add_node('synapse0', {
                'class': 'PowerGPotGPot',
                'name': 'PowerGPotGPot',
+               'gmax': 0.4,
                'threshold': -55.0,
                'slope': 0.02,
                'power': 1.0,
