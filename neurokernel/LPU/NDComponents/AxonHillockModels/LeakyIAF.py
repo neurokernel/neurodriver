@@ -11,6 +11,8 @@ from pycuda.compiler import SourceModule
 from BaseAxonHillockModel import BaseAxonHillockModel
 
 class LeakyIAF(BaseAxonHillockModel):
+    updates = ['spike_state', 'V']
+    accesses = ['I']
     params = ['resting_potential', 'threshold',
               'capacitance', 'resistance']
     internals = OrderedDict()
@@ -30,7 +32,7 @@ class LeakyIAF(BaseAxonHillockModel):
         self.debug = debug
         self.LPU_id = LPU_id
         self.dtype = params_dict['resting_potential'].dtype
-        self.ddt = self.dt/steps
+        self.ddt = self.dt/self.steps
     
         self.internal_states = {
             c: garray.zeros(self.num_comps, dtype = self.dtype)+self.internals[c] \
@@ -55,7 +57,9 @@ class LeakyIAF(BaseAxonHillockModel):
     def run_step(self, update_pointers, st=None):
         for k in self.inputs:
             self.sum_in_variable(k, self.inputs[k], st=st)
-            
+        
+        print self.inputs['I']
+        
         self.update_func.prepared_async_call(
             self.update_func.grid, self.update_func.block, st,
             self.num_comps, self.ddt*1000, self.steps,
@@ -66,6 +70,7 @@ class LeakyIAF(BaseAxonHillockModel):
         
     def get_update_template(self):
         template = """
+#include "stdio.h"
 __global__ void update(int num_comps, %(dt)s dt, int nsteps,
                %(I)s* g_I,
                %(resting_potential)s* g_resting_potential,
@@ -88,17 +93,15 @@ __global__ void update(int num_comps, %(dt)s dt, int nsteps,
 
     for(int i = tid; i < num_comps; i += total_threads)
     {
-        refractory_time_left = fmax%(fletter)s(g_refractory_time_left[i] - dt, 0);
-        
         V = g_V[i];
         I = g_I[i];
         capacitance = g_capacitance[i];
-        reset_voltage = g_reset_voltage[i];
         resting_potential = g_resting_potential[i];
         threshold = g_threshold[i];
+        resistance = g_resistance[i];
         
         bh = exp%(fletter)s(-dt/(capacitance*resistance));
-        V = V*bh + resistance*I*(1.0 - bh);
+        V = V*bh + (resistance*I+resting_potential)*(1.0 - bh);
         
         spike = 0;
         if (V >= threshold)
@@ -106,7 +109,7 @@ __global__ void update(int num_comps, %(dt)s dt, int nsteps,
             V = resting_potential;
             spike = 1;
         }
-        
+
         g_V[i] = V;
         g_spike_state[i] = spike;
     
@@ -121,7 +124,7 @@ __global__ void update(int num_comps, %(dt)s dt, int nsteps,
         mod = SourceModule(self.get_update_template() % type_dict,
                            options=self.compile_options)
         func = mod.get_function("update")
-        func.prepare('i'+np.dtype(dtypes['dt']).char+'P'*(len(type_dict)-2))
+        func.prepare('i'+np.dtype(dtypes['dt']).char+'i'+'P'*(len(type_dict)-2))
         func.block = (256,1,1)
         func.grid = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
                          (self.num_comps-1) / 256 + 1), 1)
@@ -173,18 +176,17 @@ if __name__ == '__main__':
     G = nx.MultiDiGraph()
 
     G.add_node('neuron0', {
-               'class': 'LIF',
-               'name': 'LIF',
+               'class': 'LeakyIAF',
+               'name': 'LeakyIAF',
                'resting_potential': -70.0,
                'threshold': -45.0,
                'capacitance': 0.07, # in mS
-               'resistance': 228, # in Ohm
+               'resistance': 0.2, # in Ohm
                })
 
     comp_dict, conns = LPU.graph_to_dicts(G)
 
-    #fl_input_processor = StepInputProcessor('I', ['neuron0'], 1, 0.2, 0.4)
-    fl_input_processor = FileInputProcessor('input.h5')
+    fl_input_processor = StepInputProcessor('I', ['neuron0'], 40, 0.2, 0.8)
     fl_output_processor = FileOutputProcessor([('spike_state', None),('V', None)], 'new_output.h5', sample_interval=1)
 
     man.add(LPU, 'ge', dt, comp_dict, conns,
