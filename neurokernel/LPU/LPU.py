@@ -101,13 +101,13 @@ class LPU(Module):
                 
             if 'model' in data:
                 if data['model'] == 'port_in_gpot':
-                    for a in data:
+                    for a in data.keys():
                         if a!='selector': del data[a] 
                     data['class'] = 'Port'
                     data['port_type'] = 'gpot'
                     data['port_io'] = 'in'
                 elif data['model'] == 'port_in_spk':
-                    for a in data:
+                    for a in data.keys():
                         if a!='selector': del data[a]
                     data['class'] = 'Port'
                     data['port_type'] = 'spike'
