@@ -50,9 +50,14 @@ class LeakyIAF(BaseAxonHillockModel):
         self.update_func = self.get_update_func(dtypes)
 
     def pre_run(self, update_pointers):
-        cuda.memcpy_dtod(int(update_pointers['V']),
-                         self.params_dict['resting_potential'].gpudata,
-                         self.params_dict['resting_potential'].nbytes)
+        if self.params_dict.has_key('initV'):
+            cuda.memcpy_dtod(int(update_pointers['V']),
+                             self.params_dict['initV'].gpudata,
+                             self.params_dict['initV'].nbytes)
+        else:
+            cuda.memcpy_dtod(int(update_pointers['V']),
+                             self.params_dict['resting_potential'].gpudata,
+                             self.params_dict['resting_potential'].nbytes)
     
     def run_step(self, update_pointers, st=None):
         for k in self.inputs:
