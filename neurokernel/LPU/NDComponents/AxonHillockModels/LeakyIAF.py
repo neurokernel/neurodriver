@@ -63,8 +63,6 @@ class LeakyIAF(BaseAxonHillockModel):
         for k in self.inputs:
             self.sum_in_variable(k, self.inputs[k], st=st)
         
-        print self.inputs['I']
-        
         self.update_func.prepared_async_call(
             self.update_func.grid, self.update_func.block, st,
             self.num_comps, self.ddt*1000, self.steps,

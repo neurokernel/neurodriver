@@ -26,8 +26,8 @@ class PowerGPotGPot(BaseSynapseModel):
 
         self.debug = debug
         self.dt = dt
-        self.num_comps = params_dict['gmax'].size
-        self.dtype = params_dict['gmax'].dtype
+        self.num_comps = params_dict['threshold'].size
+        self.dtype = params_dict['threshold'].dtype
         self.LPU_id = LPU_id
         self.nsteps = 1
         self.ddt = dt/self.nsteps
