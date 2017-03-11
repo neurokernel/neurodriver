@@ -47,154 +47,169 @@ def create_lpu_graph(lpu_name, N_sensory, N_local, N_proj):
     neu_num = (N_sensory, N_local, N_proj)
 
     # Neuron ids are between 0 and the total number of neurons:
-    G = nx.DiGraph()
-    G.add_nodes_from(range(sum(neu_num)))
+    G = nx.MultiDiGraph()
 
-    idx = 0
+    in_port_idx = 0
     spk_out_id = 0
     gpot_out_id = 0
+
     for (t, n) in zip(neu_type, neu_num):
         for i in range(n):
+            id = t+"_"+str(i)
             name = t+"_"+str(i)
 
-            # All local neurons are graded potential only:
+            # Half of the sensory neurons and projection neurons are
+            # spiking neurons. The other half are graded potential neurons.
+            # All local neurons are graded potential only.
             if t != 'local' and np.random.rand() < 0.5:
-                G.node[idx] = {
-                    'model': 'LeakyIAF',
-                    'name': name+'_s',
-                    'extern': True if t == 'sensory' else False, # True if the neuron can receive external input
-                    'public': True if t == 'proj' else False,    # True if the neuron can emit output
-                    'spiking': True,
-                    'V': np.random.uniform(-0.06,-0.025),
-                    'Vr': -0.0675489770451,
-                    'Vt': -0.0251355161007,
-                    'R': 1.02445570216,
-                    'C': 0.0669810502993}
+                G.add_node(id,
+                           {'class': 'LeakyIAF',
+                            'name': name+'_s',
+                            'initV': np.random.uniform(-60.0,-25.0),
+                            'reset_potential': -67.5489770451,
+                            'resting_potential': 0.0,
+                            'threshold': -25.1355161007,
+                            'resistance': 1002.445570216,
+                            'capacitance': 0.0669810502993,
+                            'circuit': 'proj' if t == 'proj' else 'local'
+                            })
 
                 # Projection neurons are all assumed to be attached to output
-                # ports (which are not represented as separate nodes):
+                # ports (which are represented as separate nodes):
                 if t == 'proj':
-                    G.node[idx]['selector'] = '/%s/out/spk/%s' % (lpu_name, str(spk_out_id))
-                    G.node[idx]['circuit'] = 'proj'
+                    G.add_node(id+'_port',
+                               {'class': 'Port',
+                                'name': name+'port',
+                                'port_type': 'spike',
+                                'port_io': 'out',
+                                'selector': '/%s/out/spk/%s' % (lpu_name, str(spk_out_id))
+                                })
+                    G.add_edge(id, id+'_port')
                     spk_out_id += 1
                 else:
-                    G.node[idx]['circuit'] = 'local'
+                    # An input port node is created for and attached to each non-projection
+                    # neuron with a synapse; this assumes that data propagates from one LPU to
+                    # another as follows:
+                    # LPU0[projection neuron] -> LPU0[output port] -> LPU1[input port] -> 
+                    # LPU1[synapse] -> LPU1[non-projection neuron]
+                    G.add_node('in_port'+str(in_port_idx),
+                               {'class': 'Port',
+                                'name': 'in_port'+str(in_port_idx),
+                                'port_type': 'spike',
+                                'port_io': 'in',
+                                'selector': '/%s/in/spk/%s' % (lpu_name, in_port_idx)
+                               })
+                    G.add_node('synapse_'+'in_port'+str(in_port_idx)+'_to_'+id,
+                               {'class': 'AlphaSynapse',
+                                'name': 'in_port'+str(in_port_idx)+'-'+name,
+                                'ad': 0.19*1000,
+                                'ar': 1.1*100,
+                                'gmax': 0.003*1e-3,
+                                'reverse': 65.0,
+                                'circuit': 'local'
+                               })
+                    G.add_edge('in_port'+str(in_port_idx),
+                              'synapse_'+'in_port'+str(in_port_idx)+'_to_'+id)
+                    G.add_edge('synapse_'+'in_port'+str(in_port_idx)+'_to_'+id,
+                               id)
+                    in_port_idx += 1
             else:
-                G.node[idx] = {
-                    'model': "MorrisLecar",
-                    'name': name+'_g',
-                    'extern': True if t == 'sensory' else False,
-                    'public': True if t == 'proj' else False,
-                    'spiking': False,
-                    'V1': 0.03,
-                    'V2': 0.015,
-                    'V3': 0,
-                    'V4': 0.03,
-                    'phi': 0.025,
-                    'offset': 0,
-                    'initV': -0.05214,
-                    'initn': 0.02,
-                }
+                G.add_node(id,
+                           {'class': "MorrisLecar",
+                            'name': name+'_g',
+                            'V1': 30.,
+                            'V2': 15.,
+                            'V3': 0.,
+                            'V4': 30.,
+                            'phi': 0.025,
+                            'offset': 0.,
+                            'V_L': -50.,
+                            'V_Ca': 100.0,
+                            'V_K': -70.0,
+                            'g_Ca': 1.1,
+                            'g_K': 2.0,
+                            'g_L': 0.5,
+                            'initV': -52.14,
+                            'initn': 0.02,
+                            'circuit': 'proj' if t == 'proj' else 'local'
+                            })
 
                 # Projection neurons are all assumed to be attached to output
                 # ports (which are not represented as separate nodes):
                 if t == 'proj':
-                    G.node[idx]['selector'] = '/%s/out/gpot/%s' % (lpu_name, str(gpot_out_id))
-                    G.node[idx]['circuit'] = 'proj'
+                    G.add_node(id+'_port',
+                               {'class': 'Port',
+                                'name': name+'port',
+                                'port_type': 'gpot',
+                                'port_io': 'out',
+                                'selector': '/%s/out/gpot/%s' % (lpu_name, str(gpot_out_id))
+                                })
+                    G.add_edge(id, id+'_port')
                     gpot_out_id += 1
                 else:
-                    G.node[idx]['circuit'] = 'local'
-            idx += 1
-
-    # An input port node is created for and attached to each non-projection
-    # neuron with a synapse; this assumes that data propagates from one LPU to
-    # another as follows:
-    # LPU0[projection neuron] -> LPU0[output port] -> LPU1[input port] -> 
-    # LPU1[synapse] -> LPU1[non-projection neuron]
-    spk_in_id = 0
-    gpot_in_id = 0
-    for i, data in G.nodes_iter(True):
-        if data['public'] == False:
-            if data['spiking']:
-                G.add_node(idx, {
-                    'name': '/%s/in/spk/%s' % (lpu_name, idx),
-                    'model': 'port_in_spk',
-                    'selector': '/%s/in/spk/%s' % (lpu_name, idx)
-                })
-                spk_in_id += 1
-                G.add_edge(idx, i, attr_dict={
-                    'name': G.node[idx]['name']+'-'+G.node[i]['name'],
-                    'model': 'AlphaSynapse',
-                    'class': 0,
-                    'conductance': True,
-                    'ad': 0.19*1000,
-                    'ar': 1.1*100,
-                    'gmax': 0.003,
-                    'reverse': 0.065,
-                    'circuit': G.node[i]['circuit']})
-            else:
-                G.add_node(idx, {
-                    'name': '/%s/in/gpot/%s' % (lpu_name, idx),
-                    'model': 'port_in_gpot',
-                    'selector': '/%s/in/gpot/%s' % (lpu_name, idx)
-                })
-                gpot_in_id += 1
-                G.add_edge(idx, i, attr_dict={
-                    'name': G.node[idx]['name']+'-'+G.node[i]['name'],
-                    'model': 'power_gpot_gpot',
-                    'class': 3,
-                    'conductance': True,
-                    'slope': 0.8,
-                    'reverse': -0.08,
-                    'saturation': 0.03,
-                    'power': 1.0,
-                    'delay': 1.0,
-                    'threshold': -0.05,
-                    'circuit': G.node[i]['circuit']})
-
-        idx += 1
-
+                    G.add_node('in_port'+str(in_port_idx),
+                               {'class': 'Port',
+                                'name': 'in_port'+str(in_port_idx),
+                                'port_type': 'gpot',
+                                'port_io': 'in',
+                                'selector': '/%s/in/gpot/%s' % (lpu_name, in_port_idx)
+                               })
+                    G.add_node('synapse_'+'in_port'+str(in_port_idx)+'_to_'+id,
+                               {'class': 'PowerGPotGPot',
+                                'name': 'in_port'+str(in_port_idx)+'-'+name,
+                                'reverse': -80.0,
+                                'saturation': 0.03*1e-3,
+                                'slope': 0.8*1e-6,
+                                'power': 1.0,
+                                'threshold': -50.0,
+                                'circuit': 'local'
+                               })
+                    G.add_edge('in_port'+str(in_port_idx),
+                               'synapse_'+'in_port'+str(in_port_idx)+'_to_'+id,
+                               delay = 0.001)
+                    G.add_edge('synapse_'+'in_port'+str(in_port_idx)+'_to_'+id,
+                               id)
+                    in_port_idx += 1
     
     # Assume a probability of synapse existence for each group of synapses:
     # sensory -> local, sensory -> projection, local -> projection, 
     # projection -> local:            
     for r, (i, j) in zip((0.5, 0.1, 0.1, 0.3),
                          ((0, 1), (0, 2), (1, 2), (2, 1))):
-        src_off = sum(neu_num[0:i])
-        tar_off = sum(neu_num[0:j])
-        for src, tar in product(range(src_off, src_off+neu_num[i]),
-                                range(tar_off, tar_off+neu_num[j])):
+        for src, tar in product(range(neu_num[i]), range(neu_num[j])):
 
             # Don't connect all neurons:
             if np.random.rand() > r: continue
 
             # Connections from the sensory neurons use the alpha function model;
             # all other connections use the power_gpot_gpot model:
-            name = G.node[src]['name'] + '-' + G.node[tar]['name']
-            if G.node[src]['spiking'] is True:
-                G.add_edge(src, tar, attr_dict={
-                    'model'       : 'AlphaSynapse',
+            pre_id = neu_type[i]+"_"+str(src)
+            post_id = neu_type[j]+"_"+str(tar)
+            name = G.node[pre_id]['name'] + '-' + G.node[post_id]['name']
+            synapse_id = 'synapse_' + name
+            if G.node[pre_id]['class'] is 'LeakyIAF':
+                G.add_node(synapse_id,
+                   {'class'       : 'AlphaSynapse',
                     'name'        : name,
-                    'class'       : 0 if G.node[tar]['spiking'] is True else 1,
                     'ar'          : 1.1*1e2,
                     'ad'          : 1.9*1e3,
-                    'reverse'     : 65*1e-3 if G.node[tar]['spiking'] else 0.01,
-                    'gmax'        : 3*1e-3 if G.node[tar]['spiking'] else 3.1e-4,
-                    'conductance' : True,
-                    'circuit'     : G.node[src]['circuit']})
+                    'reverse'     : 65.0 if G.node[post_id]['class'] is 'LeakyIAF' else 10.0,
+                    'gmax'        : 3*1e-6 if G.node[post_id]['class'] is 'LeakyIAF' else 3.1e-7,
+                    'circuit'     : 'local'})
+                G.add_edge(pre_id, synapse_id)
+                G.add_edge(synapse_id, post_id)
             else:
-                G.add_edge(src, tar, attr_dict={
-                    'model'       : 'power_gpot_gpot',
+                G.add_node(synapse_id,
+                   {'class'       : 'PowerGPotGPot',
                     'name'        : name,
-                    'class'       : 2 if G.node[tar]['spiking'] is True else 3,
-                    'slope'       : 0.8,
-                    'threshold'   : -0.05,
+                    'slope'       : 0.8*1e-6,
+                    'threshold'   : -50.0,
                     'power'       : 1.0,
-                    'saturation'  : 0.03,
-                    'delay'       : 1.0,
-                    'reverse'     : -0.1,
-                    'conductance' : True,
-                    'circuit'     : G.node[src]['circuit']})
+                    'saturation'  : 0.03*1e-3,
+                    'reverse'     : -100.0,
+                    'circuit'     : 'local'})
+                G.add_edge(pre_id, synapse_id, delay = 0.001)
+                G.add_edge(synapse_id, post_id)
 
     return G
 
@@ -263,14 +278,9 @@ def create_input(file_name, N_sensory, dt=1e-4, dur=1.0, start=0.3, stop=0.6, I_
     Nt = int(dur/dt)
     t  = np.arange(0, dt*Nt, dt)
 
+    uids = ["sensory_"+str(i) for i in range(N_sensory)]
 
-    uids = []
-    for id, data in g.nodes(data=True):
-        if 'extern' in data and data['extern']:
-            uids.append(id)
-
-    N_sensory = len(uids)
-    uids = np.array(uids)        
+    uids = np.array(uids)
     
     I  = np.zeros((Nt, N_sensory), dtype=np.float64)
     I[np.logical_and(t>start, t<stop)] = I_max
@@ -303,8 +313,8 @@ if __name__ == '__main__':
     stop = 0.6
     I_max = 0.6
     neu_num = [np.random.randint(31, 40) for i in xrange(3)]
-
+    
     create_lpu(args.lpu_file_name, args.lpu, *neu_num)
     g = nx.read_gexf(args.lpu_file_name)
-    create_input(args.in_file_name, g, dt, dur, start, stop, I_max)
+    create_input(args.in_file_name, neu_num[0], dt, dur, start, stop, I_max)
     create_lpu(args.lpu_file_name, args.lpu, *neu_num)
