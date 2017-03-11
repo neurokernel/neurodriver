@@ -13,9 +13,9 @@ from BaseAxonHillockModel import BaseAxonHillockModel
 class LeakyIAF(BaseAxonHillockModel):
     updates = ['spike_state', 'V']
     accesses = ['I']
-    params = ['resting_potential', 'threshold',
+    params = ['resting_potential', 'threshold', 'reset_potential',
               'capacitance', 'resistance']
-    internals = OrderedDict()
+    internals = OrderedDict([('internalV',0.0)])
     
     def __init__(self, params_dict, access_buffers, dt,
                  debug=False, LPU_id=None, cuda_verbose=False):
@@ -54,8 +54,15 @@ class LeakyIAF(BaseAxonHillockModel):
             cuda.memcpy_dtod(int(update_pointers['V']),
                              self.params_dict['initV'].gpudata,
                              self.params_dict['initV'].nbytes)
+            cuda.memcpy_dtod(self.internal_states['internalV'].gpudata,
+                             self.params_dict['initV'].gpudata,
+                             self.params_dict['initV'].nbytes)
+        
         else:
             cuda.memcpy_dtod(int(update_pointers['V']),
+                             self.params_dict['resting_potential'].gpudata,
+                             self.params_dict['resting_potential'].nbytes)
+            cuda.memcpy_dtod(self.internal_states['internalV'].gpudata,
                              self.params_dict['resting_potential'].gpudata,
                              self.params_dict['resting_potential'].nbytes)
     
@@ -73,13 +80,14 @@ class LeakyIAF(BaseAxonHillockModel):
         
     def get_update_template(self):
         template = """
-#include "stdio.h"
 __global__ void update(int num_comps, %(dt)s dt, int nsteps,
                %(I)s* g_I,
                %(resting_potential)s* g_resting_potential,
                %(threshold)s* g_threshold,
+               %(reset_potential)s* g_reset_potential,
                %(capacitance)s* g_capacitance,
                %(resistance)s* g_resistance,
+               %(internalV)s* g_internalV,
                %(spike_state)s* g_spike_state, %(V)s* g_V)
 {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
@@ -90,18 +98,20 @@ __global__ void update(int num_comps, %(dt)s dt, int nsteps,
     %(spike_state)s spike;
     %(resting_potential)s resting_potential;
     %(threshold)s threshold;
+    %(reset_potential)s reset_potential;
     %(capacitance)s capacitance;
     %(resistance)s resistance;
     %(dt)s bh;
 
     for(int i = tid; i < num_comps; i += total_threads)
     {
-        V = g_V[i];
+        V = g_internalV[i];
         I = g_I[i];
         capacitance = g_capacitance[i];
         resting_potential = g_resting_potential[i];
         threshold = g_threshold[i];
         resistance = g_resistance[i];
+        reset_potential = g_reset_potential[i];
         
         bh = exp%(fletter)s(-dt/(capacitance*resistance));
         V = V*bh + (resistance*I+resting_potential)*(1.0 - bh);
@@ -109,13 +119,13 @@ __global__ void update(int num_comps, %(dt)s dt, int nsteps,
         spike = 0;
         if (V >= threshold)
         {
-            V = resting_potential;
+            V = reset_potential;
             spike = 1;
         }
 
         g_V[i] = V;
+        g_internalV[i] = V;
         g_spike_state[i] = spike;
-    
     }
 }
         """
