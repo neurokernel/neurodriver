@@ -13,7 +13,7 @@ from BaseMembraneModel import BaseMembraneModel
 class MorrisLecar(BaseMembraneModel):
     params = ['V1', 'V2', 'V3', 'V4', 'phi', 'offset',
               'V_L', 'V_Ca', 'V_K', 'g_L', 'g_Ca', 'g_K']
-    internals = OrderedDict([('n', 0.3525)])
+    internals = OrderedDict([('internalV', -70.0), ('n', 0.3525)])
     
     def __init__(self, params_dict, access_buffers, dt, LPU_id=None,
                  debug=False, cuda_verbose=False):
@@ -50,6 +50,9 @@ class MorrisLecar(BaseMembraneModel):
     def pre_run(self, update_pointers):
         #initializing
         cuda.memcpy_dtod(int(update_pointers['V']),
+                         self.params_dict['initV'].gpudata,
+                         self.params_dict['initV'].nbytes)
+        cuda.memcpy_dtod(self.internal_states['internalV'].gpudata,
                          self.params_dict['initV'].gpudata,
                          self.params_dict['initV'].nbytes)
         cuda.memcpy_dtod(self.internal_states['n'].gpudata,
@@ -93,7 +96,7 @@ morris_lecar_multiple(int num_comps, %(dt)s dt, int nsteps,
                       %(V4)s* g_V4, %(phi)s* g_phi, %(offset)s* g_offset,
                       %(V_L)s* g_V_L, %(V_Ca)s* g_V_Ca, %(V_K)s* g_V_K,
                       %(g_L)s* g_g_L, %(g_Ca)s* g_g_Ca, %(g_K)s* g_g_K,
-                      %(n)s* g_n, %(V)s* g_V)
+                      %(internalV)s* g_internalV, %(n)s* g_n, %(V)s* g_V)
 {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int total_threads = gridDim.x * blockDim.x;
@@ -116,7 +119,7 @@ morris_lecar_multiple(int num_comps, %(dt)s dt, int nsteps,
     
     for(int k = tid; k < num_comps; k += total_threads)
     {
-        V = g_V[k];
+        V = g_internalV[k];
         n = g_n[k];
         V1 = g_V1[k];
         V2 = g_V2[k];
@@ -143,6 +146,7 @@ morris_lecar_multiple(int num_comps, %(dt)s dt, int nsteps,
         }
         
         g_V[k] = V;
+        g_internalV[k] = V;
         g_n[k] = n;
     }
 }
