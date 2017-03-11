@@ -1122,6 +1122,14 @@ class LPU(Module):
         # Fetch updated input if available from all input processors
         for p in self.input_processors: p.run_step()
         
+        for model in self.exec_order:
+            if model in self.model_var_inj:
+                for p in self.input_processors:
+                    for var in self.model_var_inj[model]:
+                        # Reset memory for external input to zero if present
+                        self.memory_manager.fill_zeros(model='Input', variable=var)
+                        p.inject_input(var)
+        
         # Call run_step of components
         for model in self.exec_order:
             # Get correct position in buffer for update
@@ -1137,15 +1145,6 @@ class LPU(Module):
                                        (buffer_current_plus_one*buff.ld+\
                                         shift)*buff.dtype.itemsize
             self.components[model].run_step(update_pointers)
-            # Inject Input for any variable that has been completely updated
-            # at this point
-            if model in self.model_var_inj:
-                for p in self.input_processors:
-                    for var in self.model_var_inj[model]:
-                        # Reset memory for external input to zero if present
-                        self.memory_manager.fill_zeros(model='Input', variable=var)
-                        p.inject_input(var)
-                        
         
         # Process output processors
         for p in self.output_processors: p.run_step()
