@@ -19,6 +19,9 @@ import neurokernel.pattern as pattern
 import neurokernel.plsel as plsel
 from neurokernel.LPU.LPU import LPU
 
+from neurokernel.LPU.InputProcessors.FileInputProcessor import FileInputProcessor
+from neurokernel.LPU.OutputProcessors.FileOutputProcessor import FileOutputProcessor
+
 import neurokernel.mpi_relaunch
 
 # Execution parameters:
@@ -89,48 +92,54 @@ for i, neu_num in neu_dict.iteritems():
 
     if i == 0:
         in_file_name = in_file_name_0
+        fl_input_processors = [FileInputProcessor(in_file_name)]
     else:
         in_file_name = None
+        fl_input_processors = []
     lpu_file_name = 'generic_lpu_%s.gexf.gz' % i
+
     out_file_name = 'generic_lpu_%s_output.h5' % i
+    fl_output_processors = [FileOutputProcessor(
+                    [('V',None),('spike_state',None)],
+                    out_file_name, sample_interval=1)]
 
     id = 'lpu_%s' % i
 
     g.create_lpu(lpu_file_name, id, *neu_num)
-    (n_dict, s_dict) = LPU.lpu_parser(lpu_file_name)
+    (comp_dict, conns) = LPU.lpu_parser(lpu_file_name)
 
-    man.add(LPU, id, dt, n_dict, s_dict,
-            input_file=in_file_name,
-            output_file=out_file_name,
+    man.add(LPU, id, dt, comp_dict, conns,
+            input_processors = fl_input_processors,
+            output_processors = fl_output_processors,
             device=i,
             debug=args.debug, time_sync=args.time_sync)
 
     lpu_entry['lpu_file_name'] = lpu_file_name
     lpu_entry['in_file_name'] = in_file_name
     lpu_entry['out_file_name'] = out_file_name
-    lpu_entry['n_dict'] = n_dict
-    lpu_entry['s_dict'] = s_dict
+    lpu_entry['comp_dict'] = comp_dict
+    lpu_entry['conns'] = conns
 
     lpu_dict[id] = lpu_entry
 
 # Create connectivity patterns between each combination of LPU pairs:
 for id_0, id_1 in itertools.combinations(lpu_dict.keys(), 2):
 
-    n_dict_0 = lpu_dict[id_0]['n_dict']
-    n_dict_1 = lpu_dict[id_1]['n_dict']
+    comp_dict_0 = lpu_dict[id_0]['comp_dict']
+    comp_dict_1 = lpu_dict[id_1]['comp_dict']
 
     # Find all output and input port selectors in each LPU:
-    out_ports_spk_0 = plsel.Selector(LPU.extract_out_spk(n_dict_0))
-    out_ports_gpot_0 = plsel.Selector(LPU.extract_out_gpot(n_dict_0))
+    out_ports_spk_0 = plsel.Selector(','.join(LPU.extract_out_spk(comp_dict_0, 'id')[0]))
+    out_ports_gpot_0 = plsel.Selector(','.join(LPU.extract_out_gpot(comp_dict_0, 'id')[0]))
 
-    out_ports_spk_1 = plsel.Selector(LPU.extract_out_spk(n_dict_1))
-    out_ports_gpot_1 = plsel.Selector(LPU.extract_out_gpot(n_dict_1))
+    out_ports_spk_1 = plsel.Selector(','.join(LPU.extract_out_spk(comp_dict_1, 'id')[0]))
+    out_ports_gpot_1 = plsel.Selector(','.join(LPU.extract_out_gpot(comp_dict_1, 'id')[0]))
 
-    in_ports_spk_0 = plsel.Selector(LPU.extract_in_spk(n_dict_0))
-    in_ports_gpot_0 = plsel.Selector(LPU.extract_in_gpot(n_dict_0))
+    in_ports_spk_0 = plsel.Selector(','.join(LPU.extract_in_spk(comp_dict_0, 'id')[0]))
+    in_ports_gpot_0 = plsel.Selector(','.join(LPU.extract_in_gpot(comp_dict_0, 'id')[0]))
 
-    in_ports_spk_1 = plsel.Selector(LPU.extract_in_spk(n_dict_1))
-    in_ports_gpot_1 = plsel.Selector(LPU.extract_in_gpot(n_dict_1))
+    in_ports_spk_1 = plsel.Selector(','.join(LPU.extract_in_spk(comp_dict_1, 'id')[0]))
+    in_ports_gpot_1 = plsel.Selector(','.join(LPU.extract_in_gpot(comp_dict_1, 'id')[0]))
 
     out_ports_0 = plsel.Selector.union(out_ports_spk_0, out_ports_gpot_0)
     out_ports_1 = plsel.Selector.union(out_ports_spk_1, out_ports_gpot_1)
