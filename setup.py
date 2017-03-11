@@ -15,7 +15,7 @@ from setuptools import find_packages
 from setuptools import setup
 
 NAME =               'neurodriver'
-VERSION =            '0.1'
+VERSION =            '0.2'
 AUTHOR =             'Neurokernel Development Team'
 AUTHOR_EMAIL =       'neurokernel-dev@columbia.edu'
 URL =                'https://github.com/neurokernel/neurodriver/'
