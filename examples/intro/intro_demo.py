@@ -28,6 +28,9 @@ import neurokernel.pattern as pattern
 import neurokernel.plsel as plsel
 from neurokernel.LPU.LPU import LPU
 
+from neurokernel.LPU.InputProcessors.FileInputProcessor import FileInputProcessor
+from neurokernel.LPU.OutputProcessors.FileOutputProcessor import FileOutputProcessor
+
 def main():
 
     def run(connected):
@@ -42,39 +45,57 @@ def main():
 
         lpu_file_0 = './data/generic_lpu_0.gexf.gz'
         lpu_file_1 = './data/generic_lpu_1.gexf.gz'
-        (n_dict_0, s_dict_0) = LPU.lpu_parser(lpu_file_0)
-        (n_dict_1, s_dict_1) = LPU.lpu_parser(lpu_file_1)
+        comp_dict_0, conns_0 = LPU.lpu_parser(lpu_file_0)
+        comp_dict_1, conns_1 = LPU.lpu_parser(lpu_file_1)
+        
+        fl_input_processor_0 = FileInputProcessor('./data/generic_lpu_0_input.h5')
+        fl_output_processor_0 = FileOutputProcessor(
+                    [('V',None),('spike_state',None)],
+                    'generic_lpu_0_%s_output.h5' % out_name, sample_interval=1)
 
         lpu_0_id = 'lpu_0'
-        man.add(LPU, lpu_0_id, dt, n_dict_0, s_dict_0,
-                    input_file='./data/generic_lpu_0_input.h5',
-                    output_file='generic_lpu_0_%s_output.h5' % out_name,
+        man.add(LPU, lpu_0_id, dt, comp_dict_0, conns_0,
+                    input_processors = [fl_input_processor_0],
+                    output_processors = [fl_output_processor_0],
                     device=args.gpu_dev[0],
                     debug=args.debug, time_sync=args.time_sync)
 
+        fl_input_processor_1 = FileInputProcessor('./data/generic_lpu_1_input.h5')
+        fl_output_processor_1 = FileOutputProcessor(
+                    [('V',None),('spike_state',None)],
+                    'generic_lpu_1_%s_output.h5' % out_name, sample_interval=1)
+                    
         lpu_1_id = 'lpu_1'
-        man.add(LPU, lpu_1_id, dt, n_dict_1, s_dict_1,
-                input_file='./data/generic_lpu_1_input.h5',
-                output_file='generic_lpu_1_%s_output.h5' % out_name,
-                device=args.gpu_dev[1],
-                debug=args.debug, time_sync=args.time_sync)
+        man.add(LPU, lpu_1_id, dt, comp_dict_1, conns_1,
+                    input_processors = [fl_input_processor_1],
+                    output_processors = [fl_output_processor_1],
+                    device=args.gpu_dev[1],
+                    debug=args.debug, time_sync=args.time_sync)
 
         # Create random connections between the input and output ports if the LPUs
         # are to be connected:
         if connected:
 
             # Find all output and input port selectors in each LPU:
-            out_ports_spk_0 = plsel.Selector(LPU.extract_out_spk(n_dict_0))
-            out_ports_gpot_0 = plsel.Selector(LPU.extract_out_gpot(n_dict_0))
+            out_ports_spk_0 = plsel.Selector(
+                            ','.join(LPU.extract_out_spk(comp_dict_0, 'id')[0]))
+            out_ports_gpot_0 = plsel.Selector(
+                            ','.join(LPU.extract_out_gpot(comp_dict_0, 'id')[0]))
 
-            out_ports_spk_1 = plsel.Selector(LPU.extract_out_spk(n_dict_1))
-            out_ports_gpot_1 = plsel.Selector(LPU.extract_out_gpot(n_dict_1))
+            out_ports_spk_1 = plsel.Selector(
+                            ','.join(LPU.extract_out_spk(comp_dict_1, 'id')[0]))
+            out_ports_gpot_1 = plsel.Selector(
+                            ','.join(LPU.extract_out_gpot(comp_dict_1, 'id')[0]))
 
-            in_ports_spk_0 = plsel.Selector(LPU.extract_in_spk(n_dict_0))
-            in_ports_gpot_0 = plsel.Selector(LPU.extract_in_gpot(n_dict_0))
+            in_ports_spk_0 = plsel.Selector(
+                            ','.join(LPU.extract_in_spk(comp_dict_0, 'id')[0]))
+            in_ports_gpot_0 = plsel.Selector(
+                            ','.join(LPU.extract_in_gpot(comp_dict_0, 'id')[0]))
 
-            in_ports_spk_1 = plsel.Selector(LPU.extract_in_spk(n_dict_1))
-            in_ports_gpot_1 = plsel.Selector(LPU.extract_in_gpot(n_dict_1))
+            in_ports_spk_1 = plsel.Selector(
+                            ','.join(LPU.extract_in_spk(comp_dict_1, 'id')[0]))
+            in_ports_gpot_1 = plsel.Selector(
+                            ','.join(LPU.extract_in_gpot(comp_dict_1, 'id')[0]))
 
             out_ports_0 = plsel.Selector.union(out_ports_spk_0, out_ports_gpot_0)
             out_ports_1 = plsel.Selector.union(out_ports_spk_1, out_ports_gpot_1)

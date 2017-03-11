@@ -469,7 +469,7 @@ class visualizer(object):
                                       max(0,s):min(e,data.shape[1])])[0]
                         for tind in tmp:
                             shift = self._start_times[LPU]
-                            config['handle'].vlines(float(shift+tind*dt),
+                            config['handle'].vlines(float(shift+(max(0,s)+tind)*dt),
                                                     j+0.75, j+1.25)
                 elif config['type'] == 0:
                     if int(round(float(t)/dt)) >= data.shape[1] : continue

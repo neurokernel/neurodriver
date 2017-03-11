@@ -53,11 +53,11 @@ logger = setup_logger(file_name=file_name, screen=screen)
 
 man = core.Manager()
 
-(comp_dict, conns) = LPU.lpu_parser_legacy('./data/generic_lpu.gexf.gz')
+(comp_dict, conns) = LPU.lpu_parser('./data/generic_lpu.gexf.gz')
 
 #st_input_processor = StepInputProcessor('I', ['73','74','75','76','77'] , 10, 0.1,0.4)
 fl_input_processor = FileInputProcessor('./data/generic_input.h5')
-fl_output_processor = FileOutputProcessor([('V',None),('spike_state',None),('I',None)], 'new_output.h5', sample_interval=1)
+fl_output_processor = FileOutputProcessor([('V',None),('spike_state',None)], 'new_output.h5', sample_interval=1)
 '''
 a = LPU(dt, comp_dict, conns, device=args.gpu_dev, input_processors = [st_input_processor], id='ge')
 '''

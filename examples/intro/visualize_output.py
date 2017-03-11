@@ -21,33 +21,33 @@ def run(out_name):
 
     # Assumes that generic_lpu_0_input.h5 and generic_lpu_1_input.h5
     # contain the same data:
-    V.add_LPU('./data/generic_lpu_0_input.h5', LPU='Sensory')
-    V.add_plot({'type': 'waveform', 'ids': [[0]]}, 'input_Sensory')
+    V.add_LPU('./data/generic_lpu_0_input.h5', LPU='Sensory', is_input=True)
+    V.add_plot({'type': 'waveform', 'uids': [['sensory_0']], 'variable':'I'},
+                'input_Sensory')
 
     for i in [0, 1]:
         G = nx.read_gexf('./data/generic_lpu_%s.gexf.gz' % i)
-        neu_pub = sorted([int(n) for n, d in G.nodes_iter(True) \
-                          if d['public'] == True])
+        neu_proj = sorted([k for k, n in G.node.items() if \
+                           n['name'][:4] == 'proj' and \
+                           n['class'] == 'LeakyIAF'])
+        N = len(neu_proj)
+        V.add_LPU('generic_lpu_%s_%s_output.h5' % (i, out_name),
+                  'Generic LPU %s' % i,
+                  gexf_file='./data/generic_lpu_%s.gexf.gz' % i)
+        V.add_plot({'type': 'raster', 'uids': [neu_proj],
+                    'variable': 'spike_state',
+                    'yticks': range(1, 1+N),
+                    'yticklabels': neu_proj, 'title': 'Output'},
+                    'Generic LPU %s' % i)
 
-        V.add_LPU('generic_lpu_%s_%s_output_spike.h5' % (i, out_name),
-                  './data/generic_lpu_%s.gexf.gz' % i,
-                  'Generic LPU %s' % i)
-        V.add_plot({'type': 'raster',
-                    'ids': {0: neu_pub},
-                    #'yticks': range(1, 1+len(neu_out)),
-                    #'yticklabels': range(len(neu_out))
-                    },
-                    'Generic LPU %s' % i, 'Output')
-
-    V._update_interval = 50
     V.rows = 3
     V.cols = 1
-    V.fontsize = 18
-    V.out_filename = '%s.avi' % out_name
-    V.codec = 'libtheora'
-    V.dt = 0.0001
+    V.fontsize = 8
+    V.out_filename = '%s.mp4' % out_name
+    V.codec = 'mpeg4'
     V.xlim = [0, 1.0]
     V.run()
+    #V.run('%s.png' % out_name)
 
 # Run the visualizations in parallel:
 with concurrent.futures.ProcessPoolExecutor() as executor:

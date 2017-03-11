@@ -25,19 +25,15 @@ nx.readwrite.gexf.GEXF.convert_bool = {'false':False, 'False':False,
 G = nx.read_gexf('./data/generic_lpu.gexf.gz')
 neu_proj = sorted([k for k, n in G.node.items() if \
                    n['name'][:4] == 'proj' and \
-                   n['spiking']])
+                   n['class'] == 'LeakyIAF'])
 
-in_uid = 0
-for k, n in G.node.items():
-    if 'extern' in n and n['extern']:
-        in_uid = k
-        break
+in_uid = 'sensory_0'
         
 N = len(neu_proj)
 
 V = vis.visualizer()
 V.add_LPU('./data/generic_input.h5', LPU='Sensory', is_input=True)
-V.add_plot({'type':'waveform', 'uids': [[in_uid]],'variable':'I'},
+V.add_plot({'type':'waveform', 'uids': [[in_uid]], 'variable':'I'},
            'input_Sensory')
 
 V.add_LPU('new_output.h5',  'Generic LPU',
@@ -49,7 +45,7 @@ V.add_plot({'type':'raster', 'uids': [neu_proj], 'variable': 'spike_state',
 
 V.rows = 2
 V.cols = 1
-V.fontsize = 18
+V.fontsize = 8
 V.xlim = [0, 1.0]
 
 gen_video = True
