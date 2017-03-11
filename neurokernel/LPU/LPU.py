@@ -518,8 +518,8 @@ class LPU(Module):
             data = conn[2] if len(conn)>2 else {}
             
             # Update delay
-            delay = int(round((data['delay']/dt))) \
-                    if 'delay' in data else 0
+            delay = max(int(round((data['delay']/dt))) \
+                    if 'delay' in data else 0, 1) - 1
             data['delay'] = delay
             
             if post_model == 'Aggregator':
@@ -898,6 +898,18 @@ class LPU(Module):
                 update_pointers[var] = int(buff.gpudata)+(buff.current*buff.ld+\
                                             shift)*buff.dtype.itemsize
             self.components[model].pre_run(update_pointers)
+            for var in self._comps[model]['updates']:
+                buff = self.memory_manager.get_buffer(var)
+                mind = self.memory_manager.variables[var]['models'].index(model)
+                shift = self.memory_manager.variables[var]['cumlen'][mind]
+                for j in range(buff.buffer_length):
+                    if j is not buff.current:
+                        cuda.memcpy_dtod(
+                            int(buff.gpudata)+(j*buff.ld+\
+                                                shift)*buff.dtype.itemsize,
+                            int(buff.gpudata)+(buff.current*buff.ld+\
+                                                shift)*buff.dtype.itemsize,
+                            buff.dtype.itemsize*self.model_num[self.models[model]])
         
         #print self.LPU_id, "step 10:", time.time()-start
         
@@ -1052,7 +1064,7 @@ class LPU(Module):
         for var, d in var_info.items():
             d['cumlen'] = np.cumsum([0]+d['len'])
             d['uids'] = {uid:i for i, uid in enumerate(d['uids'])}
-            self.memory_manager.memory_alloc(var, d['cumlen'][-1], d['delay']+1,\
+            self.memory_manager.memory_alloc(var, d['cumlen'][-1], d['delay']+2,\
                 dtype=self.default_dtype if not var=='spike_state' else np.int32,
                 info=d)
         
@@ -1118,8 +1130,12 @@ class LPU(Module):
                 buff = self.memory_manager.get_buffer(var)
                 mind = self.memory_manager.variables[var]['models'].index(model)
                 shift = self.memory_manager.variables[var]['cumlen'][mind]
-                update_pointers[var] = int(buff.gpudata)+(buff.current*buff.ld+\
-                                            shift)*buff.dtype.itemsize
+                buffer_current_plus_one = buff.current + 1
+                if buffer_current_plus_one >= buff.buffer_length:
+                    buffer_current_plus_one = 0
+                update_pointers[var] = int(buff.gpudata)+\
+                                       (buffer_current_plus_one*buff.ld+\
+                                        shift)*buff.dtype.itemsize
             self.components[model].run_step(update_pointers)
             # Inject Input for any variable that has been completely updated
             # at this point
