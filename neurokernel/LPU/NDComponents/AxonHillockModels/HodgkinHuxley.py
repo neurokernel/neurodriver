@@ -102,6 +102,7 @@ __global__ void update(
 
     for(int i = tid; i < num_comps; i += total_threads)
     {
+        spike = 0;
         V = g_internalV[i];
         I = g_I[i];
         n = g_n[i];
@@ -131,7 +132,7 @@ __global__ void update(
             h += ddt * dh;
             V += ddt * dV;
 
-            spike = (Vprev2<=Vprev1) && (Vprev1 >= V) && (Vprev1 > -30);
+            spike += (Vprev2<=Vprev1) && (Vprev1 >= V) && (Vprev1 > -30);
 
             Vprev2 = Vprev1;
             Vprev1 = V;
@@ -139,7 +140,7 @@ __global__ void update(
 
         g_V[i] = V;
         g_internalV[i] = V;
-        g_spike_state[i] = spike;
+        g_spike_state[i] = (spike > 0);
     }
 }
 """
