@@ -64,7 +64,7 @@ class HodgkinHuxley(BaseAxonHillockModel):
 
         self.update_func.prepared_async_call(
             self.update_func.grid, self.update_func.block, st,
-            self.num_comps, self.ddt*1000, self.steps,
+            self.num_comps, self.ddt, self.steps,
             *[self.inputs[k].gpudata for k in self.accesses]+\
             [self.params_dict[k].gpudata for k in self.params]+\
             [self.internal_states[k].gpudata for k in self.internals]+\
@@ -82,6 +82,7 @@ __global__ void update(
     %(I)s* g_I,
     %(n)s* g_n,
     %(m)s* g_m,
+    %(m)s* g_h,
     %(internalV)s* g_internalV,
     %(spike_state)s* g_spike_state,
     %(V)s* g_V)
@@ -151,9 +152,9 @@ __global__ void update(
                            options=self.compile_options)
         func = mod.get_function("update")
         func.prepare('i'+np.dtype(dtypes['dt']).char+'i'+'P'*(len(type_dict)-2))
-        func.block = (256,1,1)
+        func.block = (128,1,1)
         func.grid = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
-                         (self.num_comps-1) / 256 + 1), 1)
+                         (self.num_comps-1) / 128 + 1), 1)
         return func
 
 
