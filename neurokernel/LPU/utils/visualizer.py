@@ -562,32 +562,31 @@ class visualizer(object):
                 should be the same as uids
             variable - str (Required)
                 The variable to plot
-            uids - dict with either 1 or 2 entries
-                Specifies the neuron ids from the associated LPU.
-                The keys should be in [0,1] and the values
-                should be a list of uids consistent with uids in the h5file.
+            uids - list/tuple of either 1 or 2 list/tuple of uids
+                Specifies the neuron uids from the associated LPU.
+                The list of uids consistent with uids in the h5file.
                 For example::
 
-                    {'uids':{0:[1,2]}}
+                    {'variable':'V','uids':[['1','2']]}
 
-                will plot neurons with ids 1 and 2.
-                Two entries in the dictionary  are needed if the plot is
+                will plot neurons with uids 1 and 2.
+                Two lists of uids are needed if the plot is
                 of type 'hsv' or 'quiver'
                 For example::
 
-                     {'uids':{0:[:768],1:[768:1536]},'type':'HSV'}
+                     {'variable':'V:,
+                     'uids':[map(str,range(768)),map(str,range(768,1536)],'type':'HSV'}
 
                 can be used to generate a HSV plot where the hue channel is
-                controlled by the angle of the vector defined by the membrane
-                potentials of the neurons with ids [:768] and [768:1536] and
-                the value will be the magnitude of the same vector.
+                controlled by the angle of the vector with the membrane
+                potentials of the component with uids '0' through '767' as the x component
+                and potentials of neurons with 'uids' '768' through '1535' as the y component.
+                The value will be the magnitude of the same vector.
 
-                This parameter is optional for the following cases::
-
-                    1) The plot is associated with input signals.
-
-                If the above doesn't hold, this attribute needs to be specified.
-
+                This parameter must be specified for plots of type 'HSV' or 'quiver'
+        
+                If not specified, all components in the h5 file for which that variable was recorded
+                will be plotted
         
             shape - list or tuple with two entries
                 This attribute specifies the dimensions for plots of type image,
@@ -623,6 +622,7 @@ class visualizer(object):
         else:
             config['uids'] = self._uids[LPU][var]
             config['ids'] = [[range(0,len(config['uids']))]]
+            self._config[LPU].append(config)
             #raise ValueError('uids must be provided')
             '''
             config['ids'] = {}
@@ -631,6 +631,7 @@ class visualizer(object):
                 for id in range(len(self._graph[LPU].node)):
                     if self._graph[LPU].node[str(id)]['name'] == name:
                         config['ids'][i].append(id-shift)
+            
             self._config[LPU].append(config)
             '''
         if not 'title' in config:
