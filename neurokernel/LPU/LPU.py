@@ -1124,10 +1124,10 @@ class LPU(Module):
         
         for model in self.exec_order:
             if model in self.model_var_inj:
-                for p in self.input_processors:
-                    for var in self.model_var_inj[model]:
-                        # Reset memory for external input to zero if present
-                        self.memory_manager.fill_zeros(model='Input', variable=var)
+                for var in self.model_var_inj[model]:
+                    # Reset memory for external input to zero if present
+                    self.memory_manager.fill_zeros(model='Input', variable=var)
+                    for p in self.input_processors:
                         p.inject_input(var)
         
         # Call run_step of components
