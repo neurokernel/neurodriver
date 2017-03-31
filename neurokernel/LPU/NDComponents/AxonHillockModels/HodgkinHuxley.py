@@ -26,12 +26,14 @@ class HodgkinHuxley(BaseAxonHillockModel):
         self.num_comps = params_dict['n'].size
         self.params_dict = params_dict
         self.access_buffers = access_buffers
-        self.dt = np.double(dt)
-        self.steps = 1
+
         self.debug = debug
         self.LPU_id = LPU_id
         self.dtype = params_dict['n'].dtype
-        self.ddt = self.dt/self.steps
+
+        self.dt = np.double(dt)
+        self.ddt = np.double(1e-6)
+        self.steps = np.int32(max( int(self.dt/self.ddt), 1 ))
 
         self.internal_states = {
             c: garray.zeros(self.num_comps, dtype = self.dtype)+self.internals[c] \
@@ -82,7 +84,7 @@ __global__ void update(
     %(I)s* g_I,
     %(n)s* g_n,
     %(m)s* g_m,
-    %(m)s* g_h,
+    %(h)s* g_h,
     %(internalV)s* g_internalV,
     %(spike_state)s* g_spike_state,
     %(V)s* g_V)
@@ -96,8 +98,8 @@ __global__ void update(
     %(I)s I;
     %(spike_state)s spike;
     %(n)s n, dn;
-    %(n)s m, dm;
-    %(n)s h, dh;
+    %(m)s m, dm;
+    %(h)s h, dh;
     %(n)s a;
 
     for(int i = tid; i < num_comps; i += total_threads)
@@ -107,7 +109,7 @@ __global__ void update(
         I = g_I[i];
         n = g_n[i];
         m = g_m[i];
-        h = g_n[i];
+        h = g_h[i];
 
         for (int j = 0; j < nsteps; ++j)
         {
@@ -138,6 +140,9 @@ __global__ void update(
             Vprev1 = V;
         }
 
+        g_n[i] = n;
+        g_m[i] = m;
+        g_h[i] = h;
         g_V[i] = V;
         g_internalV[i] = V;
         g_spike_state[i] = (spike > 0);
@@ -223,3 +228,19 @@ if __name__ == '__main__':
     man.spawn()
     man.start(steps=args.steps)
     man.wait()
+
+    # plot the result
+    import h5py
+    import matplotlib
+    matplotlib.use('PS')
+    import matplotlib.pyplot as plt
+
+    f = h5py.File('new_output.h5')
+    t = np.arange(0, args.steps)*dt
+
+    plt.figure()
+    plt.plot(t,f['V'].values()[0])
+    plt.xlabel('time, [s]')
+    plt.ylabel('Voltage, [mV]')
+    plt.title('Hodgkin-Huxley Neuron')
+    plt.savefig('hhn.png',dpi=300)
