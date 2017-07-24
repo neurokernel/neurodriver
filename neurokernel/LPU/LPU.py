@@ -686,27 +686,25 @@ class LPU(Module):
 
         # Add connections for component with no incoming connections
         for uid, model in self.uid_model_map.iteritems():
-            if not model == 'Port':
-                var = self._comps[model]['accesses'][0]
-            else:
-                var = ''
-            if ((not uid in self.conn_dict or not var in self.conn_dict[uid])
-                and not model == 'Port'):
-                pre = self.generate_uid(input=True)
-                self.gen_uids.append(pre)
-                if not var in self.variable_delay_map:
-                    self.variable_delay_map[var]=0
-                if not uid in self.conn_dict: self.conn_dict[uid] = {}
-                if model == 'Aggregator' and var == 'g':
-                    self.conn_dict[uid][var] = {'pre':[pre],'delay':[0],
-                                                'reverse': [0]} #'id': [0],
-                else:
-                    self.conn_dict[uid][var] = {'pre':[pre],'delay':[0]}
-                if not 'Input' in comp_dict:
-                    comp_dict['Input'] = {}
-                if not var in comp_dict['Input']:
-                    comp_dict['Input'][var] = {self.uid_key: []}
-                comp_dict['Input'][var][self.uid_key].append(pre)
+            if model == 'Port':
+                continue
+            for var in self._comps[model]['accesses']:
+                if ((not uid in self.conn_dict or not var in self.conn_dict[uid])):
+                    pre = self.generate_uid(input=True)
+                    self.gen_uids.append(pre)
+                    if not var in self.variable_delay_map:
+                        self.variable_delay_map[var]=0
+                    if not uid in self.conn_dict: self.conn_dict[uid] = {}
+                    if model == 'Aggregator' and var == 'g':
+                        self.conn_dict[uid][var] = {'pre':[pre],'delay':[0],
+                                                    'reverse': [0]} #'id': [0],
+                    else:
+                        self.conn_dict[uid][var] = {'pre':[pre],'delay':[0]}
+                    if not 'Input' in comp_dict:
+                        comp_dict['Input'] = {}
+                    if not var in comp_dict['Input']:
+                        comp_dict['Input'][var] = {self.uid_key: []}
+                    comp_dict['Input'][var][self.uid_key].append(pre)
 
         #print self.LPU_id, "step 4:", time.time()-start
 
