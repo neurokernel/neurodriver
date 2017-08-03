@@ -1,14 +1,16 @@
-import os
-import fnmatch
+
+try:
+    __import__('pkg_resources').declare_namespace(__name__)
+except ImportError:
+    from pkgutil import extend_path
+    __path__ = extend_path(__path__, __name__)
+
+import pkgutil
 
 __all__ = []
+for loader, module_name, is_pkg in  pkgutil.walk_packages(__path__):
+    f = module_name.split(".")[-1]
+    if f[:4] != "Base":
+        __all__.append(module_name)
 
-NDC_dir = os.path.dirname(__file__)
-for root, dirnames, filenames in os.walk(NDC_dir):
-    mod_imp = False
-    for f in fnmatch.filter(filenames,"*.py"):
-        if '__init__'!=f[:8] and 'Base'!=f[:4]:
-            if root != NDC_dir and not mod_imp:
-                __path__.append(root)
-                mod_imp = True
-            __all__.append(f[:-3])
+del pkgutil

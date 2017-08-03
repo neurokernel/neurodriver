@@ -38,7 +38,12 @@ from collections import Counter
 from utils.simpleio import *
 import utils.parray as parray
 
-from NDComponents import *
+from neurokernel.LPU import *
+from NDComponents import NDComponent
+from NDComponents.AxonHillockModels import *
+from NDComponents.MembraneModels import *
+from NDComponents.SynapseModels import *
+from NDComponents.DendriteModels import *
 from MemoryManager import MemoryManager
 
 import pdb
@@ -1252,14 +1257,18 @@ class LPU(Module):
         """
         Load all available NDcomponents
         """
+        import pkgutil, importlib, os
+        for loader, module_name, is_pkg in  pkgutil.walk_packages([os.getcwd()]):
+            f = module_name.split(".")[-1]
+            importlib.import_module(module_name)
+
         child_classes = NDComponent.NDComponent.__subclasses__()
         comp_classes = child_classes[:]
         for cls in child_classes:
             comp_classes.extend(cls.__subclasses__())
+
         comp_classes.extend(extra_comps)
         self._comps = {cls.__name__:{'accesses': cls.accesses ,
                                      'updates':cls.updates,
                                      'cls':cls} \
                        for cls in comp_classes if not cls.__name__[:4]=='Base'}
-        
-

@@ -29,7 +29,7 @@ class Transform(Object):
         
     @variable_name.setter
     def variable_name(self, value):
-        assert(self.LPU_obj.is_variable(value)):
+        assert(self.LPU_obj.is_variable(value))
         self ._variable_name = value
     
     @property
@@ -58,4 +58,3 @@ class Transform(Object):
         self._need_to_compile_kernel = True
         self._need_to_generate_kernel = False
         self._kernel_string = value
-    
