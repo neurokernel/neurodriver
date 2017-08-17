@@ -524,7 +524,7 @@ class LPU(Module):
                          for name, v in self._comps.items()}
         comp_accesses.update({'Port': []})
 
-        for conn in conn_list:
+        for pre, post, data in conn_list:
             try:
                 pre_model = self.uid_model_map[pre]
             except KeyError:
@@ -534,6 +534,13 @@ class LPU(Module):
             except KeyError:
                 continue
 
+            pre_updates = comp_updates[pre_model]
+            pre_updates_set = set(pre_updates)
+            post_accesses = comp_accesses[post_model]
+            post_accesses_set = set(post_accesses)
+            pre_post_intersection = pre_updates_set&post_accesses_set
+            g_in_pre_update = 'g' in pre_updates_set # not so useful
+            V_in_pre_update = 'V' in pre_updates_set
 
             # Update delay
             delay = max(int(round((data['delay']/dt))) \
@@ -837,13 +844,16 @@ class LPU(Module):
             start = time.time()
         # Get selectors of input ports:
         sel_in_gpot, self.in_gpot_uids = self.extract_in_gpot(comp_dict,
+                                                              self.uid_key)
         self.sel_in_gpot = Selector(','.join(sel_in_gpot))
         sel_in_spk, self.in_spk_uids = self.extract_in_spk(comp_dict,
+                                                           self.uid_key)
         self.sel_in_spk = Selector(','.join(sel_in_spk))
         sel_in = Selector.add(self.sel_in_gpot, self.sel_in_spk)
 
         # Get selectors of output neurons:
         sel_out_gpot, self.out_gpot_uids = self.extract_out_gpot(comp_dict,
+                                                                 self.uid_key)
         self.sel_out_gpot = Selector(','.join(sel_out_gpot))
         sel_out_spk, self.out_spk_uids = self.extract_out_spk(comp_dict,
                                                               self.uid_key)
@@ -913,7 +923,9 @@ class LPU(Module):
         if self.print_timing:
             start = time.time()
         super(LPU, self).pre_run()
-        self.log_info("LPU pre_run parent took {} seconds".format(time.time()-start))
+        if self.print_timing:
+            start = time.time()
+            self.log_info("LPU pre_run parent took {} seconds".format(time.time()-start))
 
         if self.print_timing:
             start = time.time()
@@ -1334,7 +1346,7 @@ class LPU(Module):
 class uid_generator(object):
     def __init__(self):
         self.input_count = 0
-        self.auto_count = 0≥
+        self.auto_count = 0
 
     def generate_uid(self, input=False):
         if input:
