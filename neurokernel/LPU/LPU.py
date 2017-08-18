@@ -230,6 +230,8 @@ class LPU(Module):
             comp_dict[model]['id'] = [comp[uid_key] if uid_key else uid \
                                       for uid, comp in sub_comps]
 
+            print 'Number of {}: {}'.format(model, len(comp_dict[model]['id']))
+
 #        for id, comp in comps:
 #            model = comp[class_key]
 #
