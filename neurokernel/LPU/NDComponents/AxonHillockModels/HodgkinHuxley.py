@@ -208,7 +208,7 @@ if __name__ == '__main__':
 
     G = nx.MultiDiGraph()
 
-    G.add_node('neuron0', {
+    G.add_node('neuron0', **{
                'class': 'HodgkinHuxley',
                'name': 'HodgkinHuxley',
                'n': 0.,

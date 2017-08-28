@@ -16,7 +16,7 @@ class PowerGPotGPot(BaseSynapseModel):
     updates = ['g']
     params = ['threshold', 'slope', 'power', 'saturation']
     internals = OrderedDict([])
-    
+
     def __init__(self, params_dict, access_buffers, dt,
                  LPU_id=None, debug=False, cuda_verbose=False):
         if cuda_verbose:
@@ -31,24 +31,24 @@ class PowerGPotGPot(BaseSynapseModel):
         self.LPU_id = LPU_id
         self.nsteps = 1
         self.ddt = dt/self.nsteps
-        
+
         self.params_dict = params_dict
         self.access_buffers = access_buffers
-        
+
         self.internal_states = {
             c: garray.zeros(self.num_comps, dtype = self.dtype)+self.internals[c] \
             for c in self.internals}
-        
+
         self.inputs = {
             k: garray.empty(self.num_comps, dtype = self.access_buffers[k].dtype)\
             for k in self.accesses}
-        
+
         self.retrieve_buffer_funcs = {}
         for k in self.accesses:
             self.retrieve_buffer_funcs[k] = \
                 self.get_retrieve_buffer_func(
                     k, dtype = self.access_buffers[k].dtype)
-        
+
         dtypes = {'dt': self.dtype}
         dtypes.update({k: self.inputs[k].dtype for k in self.accesses})
         dtypes.update({k: self.params_dict[k].dtype for k in self.params})
@@ -68,7 +68,7 @@ class PowerGPotGPot(BaseSynapseModel):
             [self.params_dict[k].gpudata for k in self.params]+\
             [self.internal_states[k].gpudata for k in self.internals]+\
             [update_pointers[k] for k in self.updates])
-                
+
     def get_update_template(self):
         template = """
 __global__ void PowerGPotGPot(int num_comps, %(dt)s dt, int steps,
@@ -93,7 +93,7 @@ __global__ void PowerGPotGPot(int num_comps, %(dt)s dt, int steps,
         slope = g_slope[i];
         power = g_power[i];
         saturation = g_saturation[i];
-        
+
         g_g[i] = fmin%(fletter)s(saturation,
                     slope*pow%(fletter)s(fmax(0.0,V-threshold),power));
     }
@@ -156,7 +156,7 @@ if __name__ == '__main__':
 
     G = nx.MultiDiGraph()
 
-    G.add_node('synapse0', {
+    G.add_node('synapse0', **{
                'class': 'PowerGPotGPot',
                'name': 'PowerGPotGPot',
                'gmax': 0.4,
@@ -179,4 +179,3 @@ if __name__ == '__main__':
     man.spawn()
     man.start(steps=args.steps)
     man.wait()
-
