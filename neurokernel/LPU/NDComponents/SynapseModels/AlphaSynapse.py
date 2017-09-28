@@ -232,7 +232,7 @@ if __name__ == '__main__':
     uids = np.array(["synapse0"])
 
     spike_state = np.zeros((steps, 1), dtype=np.int32)
-    spike_state[np.nonzero(t-np.round(t/0.04)*0.04==0)[0]] = 1
+    spike_state[np.nonzero(t - np.round(t / 0.04) * 0.04 == 0)[0]] = 1
 
     with h5py.File('input_spike.h5', 'w') as f:
         f.create_dataset('spike_state/uids', data=uids)
@@ -247,7 +247,7 @@ if __name__ == '__main__':
     G.add_node('synapse0', {
                'class': 'AlphaSynapse',
                'name': 'AlphaSynapse',
-               'gmax': 0.003*1e-3,
+               'gmax': 0.003 * 1e-3,
                'ar': 110.0,
                'ad': 190.0,
                'reverse': 0.0
