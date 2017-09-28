@@ -16,14 +16,14 @@ class LeakyIAF(BaseAxonHillockModel):
     params = ['resting_potential', 'threshold', 'reset_potential',
               'capacitance', 'resistance']
     internals = OrderedDict([('internalV',0.0)])
-    
+
     def __init__(self, params_dict, access_buffers, dt,
                  debug=False, LPU_id=None, cuda_verbose=False):
         if cuda_verbose:
             self.compile_options = ['--ptxas-options=-v']
         else:
             self.compile_options = []
-            
+
         self.num_comps = params_dict['resting_potential'].size
         self.params_dict = params_dict
         self.access_buffers = access_buffers
@@ -33,15 +33,15 @@ class LeakyIAF(BaseAxonHillockModel):
         self.LPU_id = LPU_id
         self.dtype = params_dict['resting_potential'].dtype
         self.ddt = self.dt/self.steps
-    
+
         self.internal_states = {
             c: garray.zeros(self.num_comps, dtype = self.dtype)+self.internals[c] \
             for c in self.internals}
-        
+
         self.inputs = {
             k: garray.empty(self.num_comps, dtype = self.access_buffers[k].dtype)\
             for k in self.accesses}
-        
+
         dtypes = {'dt': self.dtype}
         dtypes.update({k: self.inputs[k].dtype for k in self.accesses})
         dtypes.update({k: self.params_dict[k].dtype for k in self.params})
@@ -57,7 +57,7 @@ class LeakyIAF(BaseAxonHillockModel):
             cuda.memcpy_dtod(self.internal_states['internalV'].gpudata,
                              self.params_dict['initV'].gpudata,
                              self.params_dict['initV'].nbytes)
-        
+
         else:
             cuda.memcpy_dtod(int(update_pointers['V']),
                              self.params_dict['resting_potential'].gpudata,
@@ -65,11 +65,11 @@ class LeakyIAF(BaseAxonHillockModel):
             cuda.memcpy_dtod(self.internal_states['internalV'].gpudata,
                              self.params_dict['resting_potential'].gpudata,
                              self.params_dict['resting_potential'].nbytes)
-    
+
     def run_step(self, update_pointers, st=None):
         for k in self.inputs:
             self.sum_in_variable(k, self.inputs[k], st=st)
-        
+
         self.update_func.prepared_async_call(
             self.update_func.grid, self.update_func.block, st,
             self.num_comps, self.ddt*1000, self.steps,
@@ -77,7 +77,7 @@ class LeakyIAF(BaseAxonHillockModel):
             [self.params_dict[k].gpudata for k in self.params]+\
             [self.internal_states[k].gpudata for k in self.internals]+\
             [update_pointers[k] for k in self.updates])
-        
+
     def get_update_template(self):
         template = """
 __global__ void update(int num_comps, %(dt)s dt, int nsteps,
@@ -112,10 +112,10 @@ __global__ void update(int num_comps, %(dt)s dt, int nsteps,
         threshold = g_threshold[i];
         resistance = g_resistance[i];
         reset_potential = g_reset_potential[i];
-        
+
         bh = exp%(fletter)s(-dt/(capacitance*resistance));
         V = V*bh + (resistance*I+resting_potential)*(1.0 - bh);
-        
+
         spike = 0;
         if (V >= threshold)
         {
@@ -188,7 +188,7 @@ if __name__ == '__main__':
 
     G = nx.MultiDiGraph()
 
-    G.add_node('neuron0', {
+    G.add_node('neuron0', **{
                'class': 'LeakyIAF',
                'name': 'LeakyIAF',
                'resting_potential': -70.0,
@@ -209,4 +209,3 @@ if __name__ == '__main__':
     man.spawn()
     man.start(steps=args.steps)
     man.wait()
-

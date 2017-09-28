@@ -184,7 +184,7 @@ if __name__ == '__main__':
 
     G = nx.MultiDiGraph()
 
-    G.add_node('neuron0', {
+    G.add_node('neuron0', **{
                'class': 'LIF',
                'name': 'LIF',
                'resting_potential': -70.0,
