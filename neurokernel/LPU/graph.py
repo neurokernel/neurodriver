@@ -3,12 +3,21 @@ import inspect
 from NDComponents import *
 from collections import OrderedDict
 
+def get_all_subclasses(cls):
+    all_subclasses = []
+
+    for subclass in cls.__subclasses__():
+        all_subclasses.append(subclass)
+        all_subclasses.extend(get_all_subclasses(subclass))
+
+    return all_subclasses
+
 class Graph(object):
     def __init__(self):
         self.graph = nx.MultiDiGraph()
         self.modelDefaults = {}
 
-    def add_neuron(self, name, model, params={}, states={}, **kwargs):
+    def add_neuron(self, name, model, **kwargs):
         """Add a single neuron.
 
         Parameters
@@ -38,9 +47,14 @@ class Graph(object):
         dictionary. This includes strings, numbers, tuples of strings
         and numbers, etc.
         """
+        params = kwargs.pop('params', dict())
+        states = kwargs.pop('states', dict())
+
         if type(model) is str:
-            if model in globals():
-                model = globals()[model]
+            modules = get_all_subclasses(NDComponent.NDComponent)
+            modules = {x.__name__: x for x in modules}
+            if model in modules:
+                model = modules[model]
             else:
                 raise TypeError("Unsupported model type %r" % model)
 
