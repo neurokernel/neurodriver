@@ -100,7 +100,21 @@ class Graph(object):
         pass
 
     def write_gexf(self, filename):
-        pass
+        graph = nx.MultiDiGraph()
+        for n,d in self.graph.nodes_iter(data=True):
+            data = d.copy()
+            model = data.pop('class')
+            data['class'] = model.__name__
+            for p in ('params', 'states'):
+                r = self.modelDefaults[model][p].copy()
+                r.update(data.pop(p))
+                data.update(r)
+            graph.add_node(n, data)
+        nx.write_gexf(graph, filename)
 
     def read_gexf(self, filename):
         pass
+
+    def neurons(self, data=False):
+        """wrapper to networkx.graph.nodes"""
+        return self.graph.nodes(data)
