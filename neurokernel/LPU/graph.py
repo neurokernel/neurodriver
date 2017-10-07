@@ -113,7 +113,11 @@ class Graph(object):
         nx.write_gexf(graph, filename)
 
     def read_gexf(self, filename):
-        pass
+        self.graph = nx.MultiDiGraph()
+        graph = nx.read_gexf(filename)
+        for n,d in graph.nodes_iter(data=True):
+            model = d.pop('class')
+            self.add_neuron(n, model, **d)
 
     def neurons(self, data=False):
         """wrapper to networkx.graph.nodes"""
