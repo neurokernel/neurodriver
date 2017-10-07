@@ -49,10 +49,10 @@ class Graph(object):
         """
         params = kwargs.pop('params', dict())
         states = kwargs.pop('states', dict())
-
+        model = model.encode('utf-8')
         if type(model) is str:
             modules = get_all_subclasses(NDComponent.NDComponent)
-            modules = {x.__name__: x for x in modules}
+            modules = {x.__name__.encode('utf-8'): x for x in modules}
             if model in modules:
                 model = modules[model]
             else:
@@ -104,7 +104,7 @@ class Graph(object):
         for n,d in self.graph.nodes_iter(data=True):
             data = d.copy()
             model = data.pop('class')
-            data['class'] = model.__name__
+            data['class'] = model.__name__.encode('utf-8')
             for p in ('params', 'states'):
                 r = self.modelDefaults[model][p].copy()
                 r.update(data.pop(p))
