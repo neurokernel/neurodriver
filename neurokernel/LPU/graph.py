@@ -17,6 +17,36 @@ class Graph(object):
         self.graph = nx.MultiDiGraph()
         self.modelDefaults = {}
 
+    def _parse_model_kwargs(self, model, **kwargs):
+        params = kwargs.pop('params', dict())
+        states = kwargs.pop('states', dict())
+        model = model.encode('utf-8')
+        if type(model) is str:
+            modules = get_all_subclasses(NDComponent.NDComponent)
+            modules = {x.__name__.encode('utf-8'): x for x in modules}
+            if model in modules:
+                model = modules[model]
+            else:
+                raise TypeError("Unsupported model type %r" % model)
+
+        # assert(issubclass(model, NDComponent))
+
+        if model not in self.modelDefaults:
+            self.set_model_default(model, model.params, model.states)
+
+        assert(set(params.keys()) <= set(self.modelDefaults[model]['params']))
+        assert(set(states.keys()) <= set(self.modelDefaults[model]['states']))
+
+        attrs = {}
+        for k,v in kwargs.items():
+            if k in self.modelDefaults[model]['params']:
+                params[k] = v
+            elif k in self.modelDefaults[model]['states']:
+                states[k] = v
+            else:
+                attrs[k] = v
+        return model, params, states, attrs
+
     def add_neuron(self, name, model, **kwargs):
         """Add a single neuron.
 
@@ -47,33 +77,7 @@ class Graph(object):
         dictionary. This includes strings, numbers, tuples of strings
         and numbers, etc.
         """
-        params = kwargs.pop('params', dict())
-        states = kwargs.pop('states', dict())
-        model = model.encode('utf-8')
-        if type(model) is str:
-            modules = get_all_subclasses(NDComponent.NDComponent)
-            modules = {x.__name__.encode('utf-8'): x for x in modules}
-            if model in modules:
-                model = modules[model]
-            else:
-                raise TypeError("Unsupported model type %r" % model)
-
-        # assert(issubclass(model, NDComponent))
-
-        if model not in self.modelDefaults:
-            self.set_model_default(model, model.params, model.states)
-
-        assert(set(params.keys()) <= set(self.modelDefaults[model]['params']))
-        assert(set(states.keys()) <= set(self.modelDefaults[model]['states']))
-
-        attrs = {}
-        for k,v in kwargs.items():
-            if k in self.modelDefaults[model]['params']:
-                params[k] = v
-            elif k in self.modelDefaults[model]['states']:
-                states[k] = v
-            else:
-                attrs[k] = v
+        model, params, states, attrs = self._parse_model_kwargs(model, **kwargs)
 
         self.graph.add_node(name,
             {'class':model, 'params':params, 'states':states},
@@ -96,8 +100,52 @@ class Graph(object):
                     attr[k] = v
                     break
 
-    def add_synape(self):
-        pass
+    def add_synapse(self, name, source, target, model, **kwargs):
+        """Add a single synapse.
+
+        Parameters
+        ----------
+        name : hashable
+            A name can be any hashable Python object except None.
+        source : hashable or None
+            A source can be any hashable Python object except None. The hash
+            value of the pre-synaptic neuron. If None, the edge between 'source'
+            and 'name' will be omitted.
+        target : hashable or None
+            A target can be any hashable Python object except None. The hash
+            value of the post-synaptic neuron. If None, the edge between
+            'target' and 'name' will be omitted.
+        model : string or submodule of NDComponent
+            Name or the Python class of a neuron model.
+        params: dict
+            Parameters of the neuron model.
+        states: dict
+            Initial values of the state variables of the neuron model.
+        kwargs:
+            Key/Value pairs of extra attributes. Key could be an attribute in
+            params or states.
+
+        Examples
+        --------
+        >>> G = Graph()
+        >>> G.add_neuron('1', 'LeakyIAF')
+        >>> G.add_neuron('2', 'HodgkinHuxley', states={'n':0., 'm':0., 'h':1.})
+        >>> G.add_synapse('1->2', '1', '2', 'AlphaSynapse')
+
+        Notes
+        -----
+        A hashable object is one that can be used as a key in a Python
+        dictionary. This includes strings, numbers, tuples of strings
+        and numbers, etc.
+        """
+        model, params, states, attrs = self._parse_model_kwargs(model, **kwargs)
+
+        self.graph.add_node(name,
+            {'class':model, 'params':params, 'states':states},
+            **attrs)
+
+        self.graph.add_edge(source, name)
+        self.graph.add_edge(name, target)
 
     def write_gexf(self, filename):
         graph = nx.MultiDiGraph()
@@ -110,6 +158,9 @@ class Graph(object):
                 r.update(data.pop(p))
                 data.update(r)
             graph.add_node(n, data)
+        for u,v,d in self.graph.edges_iter():
+            data = d.copy()
+            graph.add_edge(u, v, **data)
         nx.write_gexf(graph, filename)
 
     def read_gexf(self, filename):
@@ -117,7 +168,10 @@ class Graph(object):
         graph = nx.read_gexf(filename)
         for n,d in graph.nodes_iter(data=True):
             model = d.pop('class')
+            # neuron and synapse are ambigious at this point
             self.add_neuron(n, model, **d)
+        for u,v,d in graph.edges_iter(data=True):
+            self.graph.add_edge(u, v, **d)
 
     def neurons(self, data=False):
         """wrapper to networkx.graph.nodes"""
