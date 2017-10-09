@@ -173,6 +173,17 @@ class Graph(object):
         for u,v,d in graph.edges_iter(data=True):
             self.graph.add_edge(u, v, **d)
 
+    @property
+    def neuron(self):
+        n = {x:d for x,d in self.graph.nodes(True) if self.isneuron(d)}
+        return n
+
     def neurons(self, data=False):
-        """wrapper to networkx.graph.nodes"""
-        return self.graph.nodes(data)
+        n = [(x,d) for x,d in self.graph.nodes(True) if self.isneuron(d)]
+        if not data:
+            n = [x for x,d in n]
+        return n
+
+    def isneuron(self, n):
+        return issubclass(n['class'], BaseAxonHillockModel.BaseAxonHillockModel) or \
+            issubclass(n['class'], BaseMembraneModel.BaseMembraneModel)
