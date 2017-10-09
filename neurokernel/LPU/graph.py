@@ -17,19 +17,21 @@ class Graph(object):
         self.graph = nx.MultiDiGraph()
         self.modelDefaults = {}
 
-    def _parse_model_kwargs(self, model, **kwargs):
-        params = kwargs.pop('params', dict())
-        states = kwargs.pop('states', dict())
-        model = model.encode('utf-8')
+    def _str_to_model(self, model):
         if type(model) is str:
+            model = model.encode('utf-8')
             modules = get_all_subclasses(NDComponent.NDComponent)
             modules = {x.__name__.encode('utf-8'): x for x in modules}
             if model in modules:
                 model = modules[model]
             else:
                 raise TypeError("Unsupported model type %r" % model)
+        return model
 
-        # assert(issubclass(model, NDComponent))
+    def _parse_model_kwargs(self, model, **kwargs):
+        params = kwargs.pop('params', dict())
+        states = kwargs.pop('states', dict())
+        model = self._str_to_model(model)
 
         if model not in self.modelDefaults:
             self.set_model_default(model, model.params, model.states)
@@ -84,6 +86,7 @@ class Graph(object):
             **attrs)
 
     def set_model_default(self, model, params, states):
+        model = self._str_to_model(model)
         self.modelDefaults[model] = {
             'params': params.copy(),
             'states': states.copy()
