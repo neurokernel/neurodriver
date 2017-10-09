@@ -49,6 +49,144 @@ class Graph(object):
                 attrs[k] = v
         return model, params, states, attrs
 
+    def connect_port(self, x, y):
+        """Connect a port to a node.
+
+        Parameters
+        ----------
+        x : hashable Python object
+            A hashable Python object except None. 'x' has to be an existing
+            node or port.
+        y : hashable Python object
+            A hashable Python object except None. 'y' has to be an existing
+            node or port.
+
+        Examples
+        --------
+        >>> G = Graph()
+        >>> G.add_neuron('1', 'LeakyIAF')
+        >>> G.add_port('1_port', '/lpu/out/spike/1', port='so')
+        >>> G.connect_port('1', '1_port')
+
+        Notes
+        -----
+        One and only one of 'x' and 'y' must be an existing port, and the
+        other has to be an existing node. The direction of the connection will
+        be inferred from the port's 'port_io' attribute.
+        """
+        x_is_port = self.graph.node[x]['class'] == 'Port'
+        y_is_port = self.graph.node[y]['class'] == 'Port'
+
+        assert(not(x_is_port == y_is_port))
+
+        if x_is_port:
+            port = x
+            node = y
+        else:
+            port = y
+            node = x
+
+        if self.graph.node[port]['port_io'] == 'out':
+            self.graph.add_edge(node, port)
+        else:
+            self.graph.add_edge(port, node)
+
+    def add_port(self, name, selector, **kwargs):
+        """Add a single port.
+
+        Parameters
+        ----------
+        name : hashable Python object
+            A hashable Python object except None. If 'node' is an existing
+            node, a neuron or a synapse, 'name' will be inferred using the
+            convention 'NameOfNode_port'.
+        selector : string
+            A xpath-like string.
+        port_type : string
+            Either 'spike'/'s' or 'gpot'/'g'.
+        port_io : string
+            Either 'in'/'i' or 'out'/'o'.
+        port : string
+            Short notation for 'port_type' and 'port_io'. 'port' can be any
+            combination of ['s','g'] cross ['i','o']. For example, 'so' or 'ig'.
+            'port' has higher priority than 'port_io' and 'port_type'.
+        source_or_target : hashable Python object or None
+            The source or the target of the port, depending on 'port_type'.
+            If 'name' is an existing node, 'source_or_target' should be given
+            as None, and will be replaced by 'name'. If 'source_or_target' is
+            not None or inferred from 'name', the connection between the port
+            and its correcsponding node will be set up.
+
+        Examples
+        --------
+        >>> G = Graph()
+        >>> G.add_neuron('1', 'LeakyIAF')
+        >>> G.add_port('1_port', '/lpu/out/spike/1', port='so')
+        >>> G.connect_port('1', '1_port')
+
+        It is recommended to pass an exisitng node as 'name' to add port. By
+        doing so, the id of the port will be inferred, and the link between
+        the port and the exsiting node will be connected automatically.
+
+        >>> G = Graph()
+        >>> G.add_neuron('1', 'LeakyIAF')
+        >>> G.add_port('1', port='so')
+
+        Alternatively, one can specify the port name. In this case, it is of
+        best practice to provide 'source_or_target'. Otherwise, 'connect_port'
+        has to be called later to connect the port and its correcsponding node,
+        as demonstrated in the first example.
+
+        >>> G = Graph()
+        >>> G.add_neuron('1', 'LeakyIAF')
+        >>> G.add_port('special_port', port='so', source_or_target='1')
+
+
+        Notes
+        -----
+        A hashable object is one that can be used as a key in a Python
+        dictionary. This includes strings, numbers, tuples of strings
+        and numbers, etc.
+        """
+        port_io = kwargs.pop('port_io', '')
+        port_type = kwargs.pop('port_type', '')
+        port = kwargs.pop('port', '')
+        source_or_target = kwargs.pop('source_or_target', None)
+
+        is_s, is_g, is_i, is_o = map(lambda x: x in port, ('s','g','i','o'))
+        assert(not(is_s and is_g))
+        assert(not(is_o and is_i))
+
+        if is_s or port_type == 's':
+            port_type = 'spike'
+        elif is_g or port_type == 'g':
+            port_type = 'gpot'
+        assert(port_type == 'gpot' or port_type == 'spike')
+
+        if is_i or port_io == 'i':
+            port_io = 'in'
+        elif is_o or port_io == 'o':
+            port_io = 'out'
+        assert(port_io == 'int' or port_io == 'out')
+
+        if node in self.graph:
+            assert(source_or_target is None)
+            source_or_target = node
+            node = "%r_port" % node
+
+        self.graph.add_node(node,
+            class='Port',
+            port_io=port_io,
+            port_type=port_type,
+            selector=selector)
+
+        if source_or_target is not None:
+            assert(source_or_target in self.graph)
+            if port_io == 'out':
+                self.graph.add_edge(source_or_target, node)
+            else:
+                self.graph.add_edge(node, source_or_target)
+
     def add_neuron(self, name, model, **kwargs):
         """Add a single neuron.
 
