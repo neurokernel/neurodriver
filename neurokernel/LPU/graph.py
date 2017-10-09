@@ -174,16 +174,15 @@ class Graph(object):
             self.graph.add_edge(u, v, **d)
 
     @property
-    def neuron(self):
-        n = {x:d for x,d in self.graph.nodes(True) if self.isneuron(d)}
+    def synapse(self):
+        n = {x:d for x,d in self.graph.nodes(True) if self.issynapse(d)}
         return n
 
-    def neurons(self, data=False):
-        n = [(x,d) for x,d in self.graph.nodes(True) if self.isneuron(d)]
+    def synapses(self, data=False):
+        n = [(x,d) for x,d in self.graph.nodes(True) if self.issynapse(d)]
         if not data:
             n = [x for x,d in n]
         return n
 
-    def isneuron(self, n):
-        return issubclass(n['class'], BaseAxonHillockModel.BaseAxonHillockModel) or \
-            issubclass(n['class'], BaseMembraneModel.BaseMembraneModel)
+    def issynapse(self, n):
+        return issubclass(n['class'], BaseSynapsekModel.BaseSynapsekModel)
