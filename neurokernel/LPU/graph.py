@@ -18,7 +18,7 @@ class Graph(object):
         self.modelDefaults = {}
 
     def _str_to_model(self, model):
-        if type(model) is str:
+        if type(model) is unicode or type(model) is str:
             model = model.encode('utf-8')
             modules = get_all_subclasses(NDComponent.NDComponent)
             modules = {x.__name__.encode('utf-8'): x for x in modules}
@@ -74,8 +74,8 @@ class Graph(object):
         other has to be an existing node. The direction of the connection will
         be inferred from the port's 'port_io' attribute.
         """
-        x_is_port = self.graph.node[x]['class'] == 'Port'
-        y_is_port = self.graph.node[y]['class'] == 'Port'
+        x_is_port = self.graph.node[x]['class'] == u'Port'
+        y_is_port = self.graph.node[y]['class'] == u'Port'
 
         assert(not(x_is_port == y_is_port))
 
@@ -91,15 +91,15 @@ class Graph(object):
         else:
             self.graph.add_edge(port, node)
 
-    def add_port(self, name, selector, **kwargs):
+    def add_port(self, name, **kwargs):
         """Add a single port.
 
         Parameters
         ----------
         name : hashable Python object
-            A hashable Python object except None. If 'node' is an existing
+            A hashable Python object except None. If 'name' is an existing
             node, a neuron or a synapse, 'name' will be inferred using the
-            convention 'NameOfNode_port'.
+            convention 'name' + "_port".
         selector : string
             A xpath-like string.
         port_type : string
@@ -148,6 +148,9 @@ class Graph(object):
         dictionary. This includes strings, numbers, tuples of strings
         and numbers, etc.
         """
+        selector = kwargs.pop('selector', None)
+        assert(selector is not None)
+
         port_io = kwargs.pop('port_io', '')
         port_type = kwargs.pop('port_type', '')
         port = kwargs.pop('port', '')
@@ -169,23 +172,24 @@ class Graph(object):
             port_io = 'out'
         assert(port_io == 'int' or port_io == 'out')
 
-        if node in self.graph:
+        if name in self.graph:
             assert(source_or_target is None)
-            source_or_target = node
-            node = "%r_port" % node
+            source_or_target = name
+            name = "%s_port" % name
 
-        self.graph.add_node(node,
-            class='Port',
-            port_io=port_io,
-            port_type=port_type,
-            selector=selector)
+        kwargs['class'] = u'Port'
+        self.graph.add_node(name,
+            kwargs,
+            port_io = port_io,
+            port_type = port_type,
+            selector = selector)
 
         if source_or_target is not None:
             assert(source_or_target in self.graph)
             if port_io == 'out':
-                self.graph.add_edge(source_or_target, node)
+                self.graph.add_edge(source_or_target, name)
             else:
-                self.graph.add_edge(node, source_or_target)
+                self.graph.add_edge(name, source_or_target)
 
     def add_neuron(self, name, model, **kwargs):
         """Add a single neuron.
@@ -292,14 +296,15 @@ class Graph(object):
         graph = nx.MultiDiGraph()
         for n,d in self.graph.nodes_iter(data=True):
             data = d.copy()
-            model = data.pop('class')
-            data['class'] = model.__name__.encode('utf-8')
-            for p in ('params', 'states'):
-                r = self.modelDefaults[model][p].copy()
-                r.update(data.pop(p))
-                data.update(r)
+            if data['class'] != u'Port':
+                model = data.pop('class')
+                data['class'] = model.__name__.encode('utf-8')
+                for p in ('params', 'states'):
+                    r = self.modelDefaults[model][p].copy()
+                    r.update(data.pop(p))
+                    data.update(r)
             graph.add_node(n, data)
-        for u,v,d in self.graph.edges_iter():
+        for u,v,d in self.graph.edges_iter(data=True):
             data = d.copy()
             graph.add_edge(u, v, **data)
         nx.write_gexf(graph, filename)
@@ -308,9 +313,12 @@ class Graph(object):
         self.graph = nx.MultiDiGraph()
         graph = nx.read_gexf(filename)
         for n,d in graph.nodes_iter(data=True):
-            model = d.pop('class')
-            # neuron and synapse are ambigious at this point
-            self.add_neuron(n, model, **d)
+            if d['class'].encode('utf-8') == u'Port':
+                self.add_port(n, **d)
+            else:
+                model = d.pop('class')
+                # neuron and synapse are ambigious at this point
+                self.add_neuron(n, model, **d)
         for u,v,d in graph.edges_iter(data=True):
             self.graph.add_edge(u, v, **d)
 
@@ -344,3 +352,16 @@ class Graph(object):
 
     def issynapse(self, n):
         return issubclass(n['class'], BaseSynapsekModel.BaseSynapsekModel)
+
+if __name__ == "__main__":
+    from neurokernel.LPU.graph import Graph
+
+    a = Graph()
+    a.add_neuron('1', 'LeakyIAF')
+    a.add_neuron('2', 'LeakyIAF')
+    a.add_port('1',port='so', selector='xx')
+    a.add_synapse('1--2', '1', '2', 'AlphaSynapse')
+    a.write_gexf('temp.gexf')
+
+    b = Graph()
+    b.read_gexf('temp.gexf')
