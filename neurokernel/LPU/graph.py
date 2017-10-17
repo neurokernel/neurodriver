@@ -34,7 +34,7 @@ class Graph(object):
         model = self._str_to_model(model)
 
         if model not in self.modelDefaults:
-            self.set_model_default(model, model.params, model.states)
+            self.set_model_default(model)
 
         assert(set(params.keys()) <= set(self.modelDefaults[model]['params']))
         assert(set(states.keys()) <= set(self.modelDefaults[model]['states']))
@@ -230,12 +230,13 @@ class Graph(object):
             {'class':model, 'params':params, 'states':states},
             **attrs)
 
-    def set_model_default(self, model, params, states):
+    def set_model_default(self, model, **kwargs):
         model = self._str_to_model(model)
         self.modelDefaults[model] = {
-            'params': params.copy(),
-            'states': states.copy()
+            'params': model.params.copy(),
+            'states': model.states.copy()
         }
+        self.update_model_default(model, **kwargs)
 
     def update_model_default(self, model, **kwargs):
         for k,v in kwargs.items():

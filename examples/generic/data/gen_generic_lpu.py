@@ -51,53 +51,44 @@ def create_lpu_graph(lpu_name, N_sensory, N_local, N_proj):
     G = Graph()
     G.set_model_default(
         'LeakyIAF',
-        {
-            'reset_potential': -67.5489770451,
-            'resting_potential': 0.0,
-            'threshold': -25.1355161007,
-            'resistance': 1002.445570216,
-            'capacitance': 0.0669810502993
-        }, {
-            'V': -67.5489770451,
-        })
+        reset_potential = -67.5489770451,
+        resting_potential = 0.0,
+        threshold = -25.1355161007,
+        resistance = 1002.445570216,
+        capacitance = 0.0669810502993,
+        V = -67.5489770451)
     G.set_model_default(
         'AlphaSynapse',
-        {
-            'ad': 0.19 * 1e3,
-            'ar': 1.1 * 1e2,
-            'gmax': 0.003 * 1e-3,
-            'reverse': 65.0,
-        }, {
-            'a0': 0., 'a1': 0., 'a2': 0.
-        })
+        ad = 0.19 * 1e3,
+        ar = 1.1 * 1e2,
+        gmax = 0.003 * 1e-3,
+        reverse = 65.0,
+        a0 = 0.,
+        a1 = 0.,
+        a2 = 0.)
     G.set_model_default(
         'PowerGPotGPot',
-        {
-            'reverse': -80.0,
-            'saturation': 0.03 * 1e-3,
-            'slope': 0.8 * 1e-6,
-            'power': 1.0,
-            'threshold': -50.0,
-        }, {})
+        reverse = -80.0,
+        saturation = 0.03 * 1e-3,
+        slope = 0.8 * 1e-6,
+        power = 1.0,
+        threshold = -50.0)
     G.set_model_default(
         'MorrisLecar',
-        {
-            'V1': 30.,
-            'V2': 15.,
-            'V3': 0.,
-            'V4': 30.,
-            'phi': 0.025,
-            'offset': 0.,
-            'V_L': -50.,
-            'V_Ca': 100.0,
-            'V_K': -70.0,
-            'g_Ca': 1.1,
-            'g_K': 2.0,
-            'g_L': 0.5,
-        }, {
-            'V': -52.14,
-            'n': 0.02,
-        })
+        V1 = 30.,
+        V2 = 15.,
+        V3 = 0.,
+        V4 = 30.,
+        phi = 0.025,
+        offset = 0.,
+        V_L = -50.,
+        V_Ca = 100.0,
+        V_K = -70.0,
+        g_Ca = 1.1,
+        g_K = 2.0,
+        g_L = 0.5,
+        V = -52.14,
+        n = 0.02)
 
     in_port_idx = 0
     spk_out_id = 0
@@ -199,8 +190,6 @@ def create_lpu_graph(lpu_name, N_sensory, N_local, N_proj):
                     circuit = 'local',
                     delay = 0.001)
     return G
-
-
 
 def create_lpu(file_name, lpu_name, N_sensory, N_local, N_proj):
     """
