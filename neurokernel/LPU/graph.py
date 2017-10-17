@@ -289,8 +289,10 @@ class Graph(object):
             {'class':model, 'params':params, 'states':states},
             **attrs)
 
-        self.graph.add_edge(source, name)
-        self.graph.add_edge(name, target)
+        if source:
+            self.graph.add_edge(source, name)
+        if target:
+            self.graph.add_edge(name, target)
 
     def write_gexf(self, filename):
         graph = nx.MultiDiGraph()
