@@ -49,7 +49,7 @@ class Graph(object):
                 attrs[k] = v
         return model, params, states, attrs
 
-    def connect_port(self, x, y):
+    def connect_port(self, x, y, **kwargs):
         """Connect a port to a node.
 
         Parameters
@@ -60,6 +60,8 @@ class Graph(object):
         y : hashable Python object
             A hashable Python object except None. 'y' has to be an existing
             node or port.
+        kwargs: dict
+            Addtional keyword arguments, for example, delay.
 
         Examples
         --------
@@ -87,9 +89,9 @@ class Graph(object):
             node = x
 
         if self.graph.node[port]['port_io'] == 'out':
-            self.graph.add_edge(node, port)
+            self.graph.add_edge(node, port, **kwargs)
         else:
-            self.graph.add_edge(port, node)
+            self.graph.add_edge(port, node, **kwargs)
 
     def add_port(self, name, **kwargs):
         """Add a single port.
@@ -178,6 +180,7 @@ class Graph(object):
             name = "%s_port" % name
 
         kwargs['class'] = u'Port'
+        delay = self._get_delay(kwargs)
         self.graph.add_node(name,
             kwargs,
             port_io = port_io,
@@ -189,7 +192,7 @@ class Graph(object):
             if port_io == 'out':
                 self.graph.add_edge(source_or_target, name)
             else:
-                self.graph.add_edge(name, source_or_target)
+                self.graph.add_edge(name, source_or_target, **delay)
 
     def add_neuron(self, name, model, **kwargs):
         """Add a single neuron.
@@ -262,10 +265,12 @@ class Graph(object):
             'target' and 'name' will be omitted.
         model : string or submodule of NDComponent
             Name or the Python class of a neuron model.
-        params: dict
+        params : dict
             Parameters of the neuron model.
-        states: dict
+        states : dict
             Initial values of the state variables of the neuron model.
+        delay : float
+            Delay between pre-synaptic neuron and synapse.
         kwargs:
             Key/Value pairs of extra attributes. Key could be an attribute in
             params or states.
@@ -284,15 +289,21 @@ class Graph(object):
         and numbers, etc.
         """
         model, params, states, attrs = self._parse_model_kwargs(model, **kwargs)
+        delay = self._get_delay(attrs)
 
         self.graph.add_node(name,
             {'class':model, 'params':params, 'states':states},
             **attrs)
 
         if source:
-            self.graph.add_edge(source, name)
+            self.graph.add_edge(source, name, **delay)
         if target:
             self.graph.add_edge(name, target)
+
+    def _get_delay(self, attrs):
+        delay = attrs.pop('delay', None)
+        delay = {'delay': delay} if delay else dict({})
+        return delay
 
     def write_gexf(self, filename):
         graph = nx.MultiDiGraph()
