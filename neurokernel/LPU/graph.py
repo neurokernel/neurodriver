@@ -172,7 +172,7 @@ class Graph(object):
             port_io = 'in'
         elif is_o or port_io == 'o':
             port_io = 'out'
-        assert(port_io == 'int' or port_io == 'out')
+        assert(port_io == 'in' or port_io == 'out')
 
         if name in self.graph:
             assert(source_or_target is None)
