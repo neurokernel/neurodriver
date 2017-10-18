@@ -121,7 +121,6 @@ if __name__ == '__main__':
 
     from neurokernel.LPU.LPU import LPU
 
-    from neurokernel.LPU.InputProcessors.FileInputProcessor import FileInputProcessor
     from neurokernel.LPU.InputProcessors.StepInputProcessor import StepInputProcessor
     from neurokernel.LPU.OutputProcessors.FileOutputProcessor import FileOutputProcessor
 
@@ -158,21 +157,51 @@ if __name__ == '__main__':
     G.add_node('neuron0', **{
                'class': 'LeakyIAF',
                'name': 'LeakyIAF',
-               'resting_potential': -70.0,
-               'threshold': -45.0,
-               'capacitance': 0.07, # in mS
-               'resistance': 0.2, # in Ohm
+               'resting_potential': 0.0,
+               'reset_potential': -65.0,
+               'threshold': -25.0,
+               'capacitance': 0.3, # in mS
+               'resistance': 1000., # in Ohm
                })
 
     comp_dict, conns = LPU.graph_to_dicts(G)
 
-    fl_input_processor = StepInputProcessor('I', ['neuron0'], 40, 0.2, 0.8)
+    fl_input_processor = StepInputProcessor('I', ['neuron0'], 4.0, 0.2, 0.8)
     fl_output_processor = FileOutputProcessor([('spike_state', None),('V', None)], 'new_output.h5', sample_interval=1)
 
-    man.add(LPU, 'ge', dt, comp_dict, conns,
+    man.add(LPU, 'ge', dt, comp_dict, conns, cuda_verbose=True,
             device=args.gpu_dev, input_processors = [fl_input_processor],
             output_processors = [fl_output_processor], debug=args.debug)
 
     man.spawn()
     man.start(steps=args.steps)
     man.wait()
+
+    # plot the result
+    import h5py
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    f = h5py.File('new_output.h5')
+    t = np.arange(0, args.steps)*dt
+
+    plt.figure()
+    plt.subplot(211)
+    plt.plot(t,f['V'].values()[0])
+    plt.xlabel('time, [s]')
+    plt.ylabel('Voltage, [mV]')
+    plt.title('IAF Neuron')
+    plt.xlim([0, dur])
+    #plt.ylim([-70, 60])
+    plt.grid()
+    plt.subplot(212)
+    spk = f['spike_state/data'].value.flatten().nonzero()[0]
+    plt.stem(t[spk],np.ones((len(spk),)))
+    plt.xlabel('time, [s]')
+    plt.ylabel('Spike')
+    plt.xlim([0, dur])
+    plt.ylim([0, 1.2])
+    plt.grid()
+    plt.tight_layout()
+    plt.savefig('iaf.png',dpi=300)
