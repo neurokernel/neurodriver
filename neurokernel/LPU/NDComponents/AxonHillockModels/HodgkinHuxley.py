@@ -13,94 +13,52 @@ from BaseAxonHillockModel import BaseAxonHillockModel
 class HodgkinHuxley(BaseAxonHillockModel):
     updates = ['spike_state', 'V']
     accesses = ['I']
-    params = ['n','m','h']
-    internals = OrderedDict([('internalV',-65.)])
-
-    def __init__(self, params_dict, access_buffers, dt,
-                 debug=False, LPU_id=None, cuda_verbose=True):
-        if cuda_verbose:
-            self.compile_options = ['--ptxas-options=-v']
-        else:
-            self.compile_options = []
-
-        self.num_comps = params_dict['n'].size
-        self.params_dict = params_dict
-        self.access_buffers = access_buffers
-
-        self.debug = debug
-        self.LPU_id = LPU_id
-        self.dtype = params_dict['n'].dtype
-
-        self.dt = np.double(dt)
-        self.ddt = np.double(1e-6)
-        self.steps = np.int32(max( int(self.dt/self.ddt), 1 ))
-
-        self.internal_states = {
-            c: garray.zeros(self.num_comps, dtype = self.dtype)+self.internals[c] \
-            for c in self.internals}
-
-        self.inputs = {
-            k: garray.empty(self.num_comps, dtype = self.access_buffers[k].dtype)\
-            for k in self.accesses}
-
-        dtypes = {'dt': self.dtype}
-        dtypes.update({k: self.inputs[k].dtype for k in self.accesses})
-        dtypes.update({k: self.params_dict[k].dtype for k in self.params})
-        dtypes.update({k: self.internal_states[k].dtype for k in self.internals})
-        dtypes.update({k: self.dtype if not k == 'spike_state' else np.int32 for k in self.updates})
-        self.update_func = self.get_update_func(dtypes)
-
-    def pre_run(self, update_pointers):
-        if self.params_dict.has_key('initV'):
-            cuda.memcpy_dtod(int(update_pointers['V']),
-                             self.params_dict['initV'].gpudata,
-                             self.params_dict['initV'].nbytes)
-            cuda.memcpy_dtod(self.internal_states['internalV'].gpudata,
-                             self.params_dict['initV'].gpudata,
-                             self.params_dict['initV'].nbytes)
-
-
-    def run_step(self, update_pointers, st=None):
-        for k in self.inputs:
-            self.sum_in_variable(k, self.inputs[k], st=st)
-
-        self.update_func.prepared_async_call(
-            self.update_func.grid, self.update_func.block, st,
-            self.num_comps, self.ddt, self.steps,
-            *[self.inputs[k].gpudata for k in self.accesses]+\
-            [self.params_dict[k].gpudata for k in self.params]+\
-            [self.internal_states[k].gpudata for k in self.internals]+\
-            [update_pointers[k] for k in self.updates])
-
-    def get_update_template(self):
-        template = """
-#define EXP exp%(fletter)s
-#define POW pow%(fletter)s
+    params = OrderedDict()
+    states = OrderedDict([
+        ('n', 0.),
+        ('m', 0.),
+        ('h', 1.),
+        ('V',-65.)])
+    max_dt = 1e-5
+    cuda_src = """
+# if (defined(USE_DOUBLE))
+#    define FLOATTYPE double
+#    define EXP exp
+#    define POW pow
+# else
+#    define FLOATTYPE float
+#    define EXP expf
+#    define POW powf
+# endif
+#
+# if (defined(USE_LONG_LONG))
+#     define INTTYPE long long
+# else
+#     define INTTYPE int
+# endif
 
 __global__ void update(
     int num_comps,
-    %(dt)s dt,
+    FLOATTYPE dt,
     int nsteps,
-    %(I)s* g_I,
-    %(n)s* g_n,
-    %(m)s* g_m,
-    %(h)s* g_h,
-    %(internalV)s* g_internalV,
-    %(spike_state)s* g_spike_state,
-    %(V)s* g_V)
+    FLOATTYPE* g_I,
+    FLOATTYPE* g_n,
+    FLOATTYPE* g_m,
+    FLOATTYPE* g_h,
+    FLOATTYPE* g_internalV,
+    INTTYPE* g_spike_state,
+    FLOATTYPE* g_V)
 {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int total_threads = gridDim.x * blockDim.x;
 
-    %(dt)s ddt = dt*1000.; // s to ms
-
-    %(V)s V, Vprev1, Vprev2, dV;
-    %(I)s I;
-    %(spike_state)s spike;
-    %(n)s n, dn;
-    %(m)s m, dm;
-    %(h)s h, dh;
-    %(n)s a;
+    FLOATTYPE V, Vprev1, Vprev2, dV;
+    FLOATTYPE I;
+    INTTYPE spike;
+    FLOATTYPE n, dn;
+    FLOATTYPE m, dm;
+    FLOATTYPE h, dh;
+    FLOATTYPE a;
 
     for(int i = tid; i < num_comps; i += total_threads)
     {
@@ -129,10 +87,10 @@ __global__ void update(
 
             dV = I - 120.*POW(m,3)*h*(V-50.) - 36. * POW(n,4) * (V+77.) - 0.3 * (V+54.387);
 
-            n += ddt * dn;
-            m += ddt * dm;
-            h += ddt * dh;
-            V += ddt * dV;
+            n += dt * dn;
+            m += dt * dm;
+            h += dt * dh;
+            V += dt * dV;
 
             spike += (Vprev2<=Vprev1) && (Vprev1 >= V) && (Vprev1 > -30);
 
@@ -149,21 +107,27 @@ __global__ void update(
     }
 }
 """
-        return template
 
-    def get_update_func(self, dtypes):
-        type_dict = {k: dtype_to_ctype(dtypes[k]) for k in dtypes}
-        type_dict.update({'fletter': 'f' if type_dict['n'] == 'float' else ''})
-        mod = SourceModule(self.get_update_template() % type_dict,
-                           options=self.compile_options)
+    def run_step(self, update_pointers, st=None):
+        for k in self.inputs:
+            self.sum_in_variable(k, self.inputs[k], st=st)
+
+        self.update_func.prepared_async_call(
+            self.update_func.grid, self.update_func.block, st,
+            self.num_comps, 1000.*self.dt, self.steps,
+            *[self.inputs[k].gpudata for k in self.accesses]+\
+            [self.params_dict[k].gpudata for k in self.params]+\
+            [self.states[k].gpudata for k in self.states]+\
+            [update_pointers[k] for k in self.updates])
+
+    def get_update_func(self):
+        mod = SourceModule(self.cuda_src, options=self.compile_options)
         func = mod.get_function("update")
-        func.prepare('i'+np.dtype(dtypes['dt']).char+'i'+'P'*(len(type_dict)-2))
+        func.prepare('i'+np.dtype(self.floattype).char+'i'+'P'*self.num_garray)
         func.block = (128,1,1)
         func.grid = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
                          (self.num_comps-1) / 128 + 1), 1)
         return func
-
-
 
 if __name__ == '__main__':
     import argparse
@@ -210,10 +174,7 @@ if __name__ == '__main__':
 
     G.add_node('neuron0', **{
                'class': 'HodgkinHuxley',
-               'name': 'HodgkinHuxley',
-               'n': 0.,
-               'm': 0.,
-               'h': 1.,
+               'name': 'HodgkinHuxley'
                })
 
     comp_dict, conns = LPU.graph_to_dicts(G)
