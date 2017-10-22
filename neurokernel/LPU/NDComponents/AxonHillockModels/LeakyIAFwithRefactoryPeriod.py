@@ -13,108 +13,83 @@ from BaseAxonHillockModel import BaseAxonHillockModel
 class LeakyIAFwithRefactoryPeriod(BaseAxonHillockModel):
     updates = ['spike_state', 'V']
     accesses = ['I']
-    params = ['resting_potential', 'threshold', 'reset_voltage',
-              'capacitance', 'refractory_period', 'time_constant',
-              'bias_current']
-    internals = OrderedDict([('refractory_time_left', 0.0)])
+    states = OrderedDict([('V', -65.)])
+    params = OrderedDict([
+        ('resting_potential', 0.),
+        ('threshold', -25.),
+        ('reset_potential', -65.),
+        ('capacitance', 0.065),
+        ('refractory_period', 0.0),
+        ('time_constant', 16.0),
+        ('bias_current', 0.0)])
+    max_dt = 1e-4
 
-    def __init__(self, params_dict, access_buffers, dt,
-                 debug=False, LPU_id=None, cuda_verbose=False):
-        if cuda_verbose:
-            self.compile_options = ['--ptxas-options=-v']
-        else:
-            self.compile_options = []
-
-        self.num_comps = params_dict['resting_potential'].size
-        self.params_dict = params_dict
-        self.access_buffers = access_buffers
-        self.dt = np.double(dt)
-        self.steps = 1
-        self.debug = debug
-        self.LPU_id = LPU_id
-        self.dtype = params_dict['resting_potential'].dtype
-
-        self.internal_states = {
-            c: garray.zeros(self.num_comps, dtype = self.dtype)+self.internals[c] \
-            for c in self.internals}
-
-        self.inputs = {
-            k: garray.empty(self.num_comps, dtype = self.access_buffers[k].dtype)\
-            for k in self.accesses}
-
-        dtypes = {'dt': self.dtype}
-        dtypes.update({k: self.inputs[k].dtype for k in self.accesses})
-        dtypes.update({k: self.params_dict[k].dtype for k in self.params})
-        dtypes.update({k: self.internal_states[k].dtype for k in self.internals})
-        dtypes.update({k: self.dtype if not k == 'spike_state' else np.int32 for k in self.updates})
-        self.update_func = self.get_update_func(dtypes)
-
-    def pre_run(self, update_pointers):
-        cuda.memcpy_dtod(int(update_pointers['V']),
-                         self.params_dict['resting_potential'].gpudata,
-                         self.params_dict['resting_potential'].nbytes)
-
-    def run_step(self, update_pointers, st=None):
-        for k in self.inputs:
-            self.sum_in_variable(k, self.inputs[k], st=st)
-
-        self.update_func.prepared_async_call(
-            self.update_func.grid, self.update_func.block, st,
-            self.num_comps, self.dt*1000,
-            *[self.inputs[k].gpudata for k in self.accesses]+\
-            [self.params_dict[k].gpudata for k in self.params]+\
-            [self.internal_states[k].gpudata for k in self.internals]+\
-            [update_pointers[k] for k in self.updates])
-
-    def get_update_template(self):
-        template = """
-__global__ void update(int num_comps, %(dt)s dt,
-               %(I)s* g_I,
-               %(resting_potential)s* g_resting_potential,
-               %(threshold)s* g_threshold,
-               %(reset_voltage)s* g_reset_voltage,
-               %(capacitance)s* g_capacitance,
-               %(refractory_period)s* g_refractory_period,
-               %(time_constant)s* g_time_constant,
-               %(bias_current)s* g_bias_current,
-               %(refractory_time_left)s* g_refractory_time_left,
-               %(spike_state)s* g_spike_state, %(V)s* g_V)
+    cuda_src = """
+# if (defined(USE_DOUBLE))
+#    define FLOATTYPE double
+#    define EXP exp
+#    define POW pow
+#    define FMAX fmax
+# else
+#    define FLOATTYPE float
+#    define EXP expf
+#    define POW powf
+#    define FMAX fmaxf
+# endif
+#
+# if (defined(USE_LONG_LONG))
+#     define INTTYPE long long
+# else
+#     define INTTYPE int
+# endif
+#
+__global__ void update(int num_comps, FLOATTYPE dt, INTTYPE steps,
+           FLOATTYPE* g_I,
+           FLOATTYPE* g_resting_potential,
+           FLOATTYPE* g_threshold,
+           FLOATTYPE* g_reset_potential,
+           FLOATTYPE* g_capacitance,
+           FLOATTYPE* g_refractory_period,
+           FLOATTYPE* g_time_constant,
+           FLOATTYPE* g_bias_current,
+           FLOATTYPE* g_refractory_time_left,
+           INTTYPE* g_spike_state, FLOATTYPE* g_V)
 {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int total_threads = gridDim.x * blockDim.x;
 
-    %(V)s V;
-    %(I)s I;
-    %(spike_state)s spike;
-    %(resting_potential)s resting_potential;
-    %(threshold)s threshold;
-    %(reset_voltage)s reset_voltage;
-    %(capacitance)s capacitance;
-    %(time_constant)s time_constant;
-    %(bias_current)s bias_current;
-    %(refractory_time_left)s refractory_time_left;
-    %(dt)s bh;
+    FLOATTYPE V;
+    FLOATTYPE I;
+    INTTYPE spike;
+    FLOATTYPE resting_potential;
+    FLOATTYPE threshold;
+    FLOATTYPE reset_potential;
+    FLOATTYPE capacitance;
+    FLOATTYPE time_constant;
+    FLOATTYPE bias_current;
+    FLOATTYPE refractory_time_left;
+    FLOATTYPE bh;
 
-    for(int i = tid; i < num_comps; i += total_threads)
+    for (int i = tid; i < num_comps; i += total_threads)
     {
-        refractory_time_left = fmax%(fletter)s(g_refractory_time_left[i] - dt, 0);
+        refractory_time_left = FMAX(g_refractory_time_left[i] - dt, 0);
 
         V = g_V[i];
         I = g_I[i];
         time_constant = g_time_constant[i];
         capacitance = g_capacitance[i];
-        reset_voltage = g_reset_voltage[i];
+        reset_potential = g_reset_potential[i];
         resting_potential = g_resting_potential[i];
         threshold = g_threshold[i];
         bias_current = g_bias_current[i];
 
-        bh = exp%(fletter)s(-dt/time_constant);
+        bh = EXP(-dt/time_constant);
         V = V*bh + ((refractory_time_left == 0 ? time_constant/capacitance*(I+bias_current) : 0) + resting_potential) * (1.0 - bh);
 
         spike = 0;
         if (V >= threshold)
         {
-            V = reset_voltage;
+            V = reset_potential;
             spike = 1;
             refractory_time_left += g_refractory_period[i];
         }
@@ -125,21 +100,28 @@ __global__ void update(int num_comps, %(dt)s dt,
 
     }
 }
-        """
-        return template
+    """
 
-    def get_update_func(self, dtypes):
-        type_dict = {k: dtype_to_ctype(dtypes[k]) for k in dtypes}
-        type_dict.update({'fletter': 'f' if type_dict['time_constant'] == 'float' else ''})
-        mod = SourceModule(self.get_update_template() % type_dict,
-                           options=self.compile_options)
+    def run_step(self, update_pointers, st=None):
+        for k in self.inputs:
+            self.sum_in_variable(k, self.inputs[k], st=st)
+
+        self.update_func.prepared_async_call(
+            self.update_func.grid, self.update_func.block, st,
+            self.num_comps, self.dt*1000, self.steps,
+            *[self.inputs[k].gpudata for k in self.accesses]+\
+            [self.params_dict[k].gpudata for k in self.params]+\
+            [self.states[k].gpudata for k in self.states]+\
+            [update_pointers[k] for k in self.updates])
+
+    def get_update_func(self):
+        mod = SourceModule(self.cuda_src, options=self.compile_options)
         func = mod.get_function("update")
-        func.prepare('i'+np.dtype(dtypes['dt']).char+'P'*(len(type_dict)-2))
+        func.prepare('i'+np.dtype(self.floattype).char+'i'+'P'*self.num_garray)
         func.block = (256,1,1)
         func.grid = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
                          (self.num_comps-1) / 256 + 1), 1)
         return func
-
 
 if __name__ == '__main__':
     import argparse
@@ -185,11 +167,11 @@ if __name__ == '__main__':
     G = nx.MultiDiGraph()
 
     G.add_node('neuron0', **{
-               'class': 'LIF',
+               'class': 'LeakyIAFwithRefactoryPeriod',
                'name': 'LIF',
                'resting_potential': -70.0,
                'threshold': -45.0,
-               'reset_voltage': -55.0,
+               'reset_potential': -55.0,
                'capacitance': 0.0744005237682, # in mS
                'refractory_period': 0.0, # in milliseconds
                'time_constant': 16.0, # in milliseconds
@@ -198,14 +180,43 @@ if __name__ == '__main__':
 
     comp_dict, conns = LPU.graph_to_dicts(G)
 
-    #fl_input_processor = StepInputProcessor('I', ['neuron0'], 1, 0.2, 0.4)
-    fl_input_processor = FileInputProcessor('input.h5')
+    fl_input_processor = StepInputProcessor('I', ['neuron0'], 1, 0.2, 0.4)
     fl_output_processor = FileOutputProcessor([('spike_state', None),('V', None)], 'new_output.h5', sample_interval=1)
 
-    man.add(LPU, 'ge', dt, comp_dict, conns,
+    man.add(LPU, 'ge', dt, comp_dict, conns, cuda_verbose=True,
             device=args.gpu_dev, input_processors = [fl_input_processor],
             output_processors = [fl_output_processor], debug=args.debug)
 
+    print args.steps
     man.spawn()
     man.start(steps=args.steps)
     man.wait()
+
+    # plot the result
+    import h5py
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    f = h5py.File('new_output.h5')
+    t = np.arange(0, args.steps)*dt
+
+    plt.figure()
+    plt.subplot(211)
+    plt.plot(t,f['V'].values()[0])
+    plt.xlabel('time, [s]')
+    plt.ylabel('Voltage, [mV]')
+    plt.title('LIF Neuron')
+    plt.xlim([0, dur])
+    #plt.ylim([-70, 60])
+    plt.grid()
+    plt.subplot(212)
+    spk = f['spike_state/data'].value.flatten().nonzero()[0]
+    plt.stem(t[spk],np.ones((len(spk),)))
+    plt.xlabel('time, [s]')
+    plt.ylabel('Spike')
+    plt.xlim([0, dur])
+    plt.ylim([0, 1.2])
+    plt.grid()
+    plt.tight_layout()
+    plt.savefig('lif.png',dpi=300)
