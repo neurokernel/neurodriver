@@ -18,7 +18,10 @@ class HodgkinHuxley(BaseAxonHillockModel):
         ('n', 0.),
         ('m', 0.),
         ('h', 1.),
-        ('V',-65.)])
+        ('V',-65.),
+        ('Vprev1', 'V'), # same as V
+        ('Vprev2', 'V')  # same as V
+    ])
     max_dt = 1e-5
     cuda_src = """
 # if (defined(USE_DOUBLE))
@@ -46,6 +49,8 @@ __global__ void update(
     FLOATTYPE* g_m,
     FLOATTYPE* g_h,
     FLOATTYPE* g_internalV,
+    FLOATTYPE *g_internalVprev1,
+    FLOATTYPE *g_internalVprev2,
     INTTYPE* g_spike_state,
     FLOATTYPE* g_V)
 {
@@ -64,6 +69,8 @@ __global__ void update(
     {
         spike = 0;
         V = g_internalV[i];
+        Vprev1 = g_internalVprev1[i];
+        Vprev2 = g_internalVprev2[i];
         I = g_I[i];
         n = g_n[i];
         m = g_m[i];
@@ -103,6 +110,8 @@ __global__ void update(
         g_h[i] = h;
         g_V[i] = V;
         g_internalV[i] = V;
+        g_internalVprev1[i] = Vprev1;
+        g_internalVprev2[i] = Vprev2;
         g_spike_state[i] = (spike > 0);
     }
 }
@@ -193,15 +202,28 @@ if __name__ == '__main__':
     # plot the result
     import h5py
     import matplotlib
-    matplotlib.use('PS')
+    matplotlib.use('Agg')
     import matplotlib.pyplot as plt
 
     f = h5py.File('new_output.h5')
     t = np.arange(0, args.steps)*dt
 
     plt.figure()
+    plt.subplot(211)
     plt.plot(t,f['V'].values()[0])
     plt.xlabel('time, [s]')
     plt.ylabel('Voltage, [mV]')
     plt.title('Hodgkin-Huxley Neuron')
+    plt.xlim([0, dur])
+    plt.ylim([-70, 60])
+    plt.grid()
+    plt.subplot(212)
+    spk = f['spike_state/data'].value.flatten().nonzero()[0]
+    plt.stem(t[spk],np.ones((len(spk),)))
+    plt.xlabel('time, [s]')
+    plt.ylabel('Spike')
+    plt.xlim([0, dur])
+    plt.ylim([0, 1.2])
+    plt.grid()
+    plt.tight_layout()
     plt.savefig('hhn.png',dpi=300)
