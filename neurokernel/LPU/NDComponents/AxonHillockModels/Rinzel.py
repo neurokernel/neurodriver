@@ -15,8 +15,8 @@ class Rinzel(BaseAxonHillockModel):
     accesses = ['I']
     params = OrderedDict()
     states = OrderedDict([
-        ('V',-65.),
         ('W', 0.4),
+        ('V',-65.),
         ('Vprev1', 'V'), # same as V
         ('Vprev2', 'V')  # same as V
     ])
@@ -44,10 +44,10 @@ __global__ void update(
     FLOATTYPE dt,
     int nsteps,
     FLOATTYPE *g_I,
+    FLOATTYPE *g_w,
     FLOATTYPE *g_internalV,
     FLOATTYPE *g_internalVprev1,
     FLOATTYPE *g_internalVprev2,
-    FLOATTYPE *g_w,
     INTTYPE *g_spike_state,
     FLOATTYPE *g_V)
 {
