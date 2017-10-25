@@ -14,47 +14,73 @@ from BaseSynapseModel import BaseSynapseModel
 class PowerGPotGPot(BaseSynapseModel):
     accesses = ['V']
     updates = ['g']
-    params = ['threshold', 'slope', 'power', 'saturation']
-    internals = OrderedDict([])
+    params = OrderedDict([
+        ('threshold', -55.0),
+        ('slope', 0.02),
+        ('power', 1.0),
+        ('saturation', 0.4),
+        ('reverse', -50.)])
+    states = OrderedDict()
+    max_dt = None
+    cuda_src = """
+# if (defined(USE_DOUBLE))
+#    define FLOATTYPE double
+#    define EXP exp
+#    define POW pow
+#    define FMAX fmax
+#    define FMIN fmin
+# else
+#    define FLOATTYPE float
+#    define EXP expf
+#    define POW powf
+#    define FMAX fmaxf
+#    define FMIN fminf
+# endif
+#
+# if (defined(USE_LONG_LONG))
+#     define INTTYPE long long
+# else
+#     define INTTYPE int
+# endif
 
-    def __init__(self, params_dict, access_buffers, dt,
-                 LPU_id=None, debug=False, cuda_verbose=False):
-        if cuda_verbose:
-            self.compile_options = ['--ptxas-options=-v']
-        else:
-            self.compile_options = []
+__global__ void PowerGPotGPot(int num_comps, FLOATTYPE dt, int steps,
+    FLOATTYPE *g_V,
+    FLOATTYPE *g_threshold,
+    FLOATTYPE *g_slope,
+    FLOATTYPE *g_power,
+    FLOATTYPE *g_saturation,
+    FLOATTYPE *g_g)
+{
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    int total_threads = gridDim.x * blockDim.x;
 
-        self.debug = debug
-        self.dt = dt
-        self.num_comps = params_dict['threshold'].size
-        self.dtype = params_dict['threshold'].dtype
-        self.LPU_id = LPU_id
-        self.nsteps = 1
-        self.ddt = dt/self.nsteps
+    FLOATTYPE V;
+    FLOATTYPE threshold;
+    FLOATTYPE slope;
+    FLOATTYPE power;
+    FLOATTYPE saturation;
 
-        self.params_dict = params_dict
-        self.access_buffers = access_buffers
+    for (int i = tid; i < num_comps; i += total_threads) {
+        V = g_V[i];
+        threshold = g_threshold[i];
+        slope = g_slope[i];
+        power = g_power[i];
+        saturation = g_saturation[i];
 
-        self.internal_states = {
-            c: garray.zeros(self.num_comps, dtype = self.dtype)+self.internals[c] \
-            for c in self.internals}
-
-        self.inputs = {
-            k: garray.empty(self.num_comps, dtype = self.access_buffers[k].dtype)\
-            for k in self.accesses}
+        g_g[i] = FMIN(saturation, slope*POW(fmax(0.0,V-threshold),power));
+    }
+}
+"""
+    def __init__(self, params_dict, access_buffers, dt, LPU_id=None,
+        debug=False, cuda_verbose=False):
+        super(PowerGPotGPot, self).__init__(params_dict, access_buffers, dt,
+            LPU_id=LPU_id, debug=debug, cuda_verbose=cuda_verbose)
 
         self.retrieve_buffer_funcs = {}
         for k in self.accesses:
             self.retrieve_buffer_funcs[k] = \
                 self.get_retrieve_buffer_func(
                     k, dtype = self.access_buffers[k].dtype)
-
-        dtypes = {'dt': self.dtype}
-        dtypes.update({k: self.inputs[k].dtype for k in self.accesses})
-        dtypes.update({k: self.params_dict[k].dtype for k in self.params})
-        dtypes.update({k: self.internal_states[k].dtype for k in self.internals})
-        dtypes.update({k: self.dtype if not k == 'spike_state' else np.int32 for k in self.updates})
-        self.update_func = self.get_update_func(dtypes)
 
     def run_step(self, update_pointers, st = None):
         # retrieve all buffers into a linear array
@@ -63,51 +89,16 @@ class PowerGPotGPot(BaseSynapseModel):
 
         self.update_func.prepared_async_call(
             self.update_func.grid, self.update_func.block, st,
-            self.num_comps, self.ddt*1000, self.nsteps,
+            self.num_comps, self.dt*1000, self.steps,
             *[self.inputs[k].gpudata for k in self.accesses]+\
-            [self.params_dict[k].gpudata for k in self.params]+\
-            [self.internal_states[k].gpudata for k in self.internals]+\
+            [self.params_dict[k].gpudata for k in self.params if k != 'reverse']+\
+            [self.states[k].gpudata for k in self.states]+\
             [update_pointers[k] for k in self.updates])
 
-    def get_update_template(self):
-        template = """
-__global__ void PowerGPotGPot(int num_comps, %(dt)s dt, int steps,
-                       %(V)s* g_V, %(threshold)s* g_threshold,
-                       %(slope)s* g_slope, %(power)s* g_power,
-                       %(saturation)s* g_saturation,
-                       %(g)s* g_g)
-{
-    int tid = threadIdx.x + blockIdx.x * blockDim.x;
-    int total_threads = gridDim.x * blockDim.x;
-
-    %(V)s V;
-    %(threshold)s threshold;
-    %(slope)s slope;
-    %(power)s power;
-    %(saturation)s saturation;
-
-    for(int i = tid; i < num_comps; i += total_threads)
-    {
-        V = g_V[i];
-        threshold = g_threshold[i];
-        slope = g_slope[i];
-        power = g_power[i];
-        saturation = g_saturation[i];
-
-        g_g[i] = fmin%(fletter)s(saturation,
-                    slope*pow%(fletter)s(fmax(0.0,V-threshold),power));
-    }
-}
-"""
-        return template
-
-    def get_update_func(self, dtypes):
-        type_dict = {k: dtype_to_ctype(dtypes[k]) for k in dtypes}
-        type_dict.update({'fletter': 'f' if type_dict['threshold'] == 'float' else ''})
-        mod = SourceModule(self.get_update_template() % type_dict,
-                           options=self.compile_options)
+    def get_update_func(self):
+        mod = SourceModule(self.cuda_src, options=self.compile_options)
         func = mod.get_function("PowerGPotGPot")
-        func.prepare('i'+np.dtype(dtypes['dt']).char+'i'+'P'*(len(type_dict)-2))
+        func.prepare('i'+np.dtype(self.floattype).char+'i'+'P'*(self.num_garray-1))
         func.block = (256,1,1)
         func.grid = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
                          (self.num_comps-1) / 256 + 1), 1)
@@ -179,3 +170,32 @@ if __name__ == '__main__':
     man.spawn()
     man.start(steps=args.steps)
     man.wait()
+
+    # plot the result
+    import h5py
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    f = h5py.File('new_output.h5')
+    t = np.arange(0, args.steps)*dt
+    V = np.linspace(-70., -30., len(t))
+
+    plt.figure()
+    plt.subplot(211)
+    plt.plot(t, V)
+    plt.title('Pre-Synaptic Neuron Voltage')
+    plt.xlabel('time, [s]')
+    plt.ylabel('Voltage, [mV]')
+    plt.xlim([0, dur])
+    plt.grid()
+
+    plt.subplot(212)
+    plt.plot(t,f['g'].values()[0])
+    plt.xlabel('time, [s]')
+    plt.ylabel('Conductance, [mS]')
+    plt.title('Power Graded Potential-Graded Potential Synapse')
+    plt.xlim([0, dur])
+    plt.grid()
+    plt.tight_layout()
+    plt.savefig('power_gpot_gpot.png', dpi=300)
