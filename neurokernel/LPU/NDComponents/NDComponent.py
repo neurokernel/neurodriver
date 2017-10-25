@@ -73,7 +73,9 @@ class NDComponent(object):
 
         # get number of components
         nums = [v.size for k,v in self.params_dict.items() if k in cls.params]
-        nums += [v.size for k,v in self.access_buffers.items() if k in cls.accesses]
+        for v in self.params_dict['npre'].values():
+            nums.append(v.size)
+        # nums += [v.size for k,v in self.access_buffers.items() if k in cls.accesses]
         self.num_comps = nums[0]
         assert(all([x == self.num_comps for x in nums]))
 
