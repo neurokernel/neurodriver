@@ -187,7 +187,6 @@ if __name__ == '__main__':
             device=args.gpu_dev, input_processors = [fl_input_processor],
             output_processors = [fl_output_processor], debug=args.debug)
 
-    print args.steps
     man.spawn()
     man.start(steps=args.steps)
     man.wait()
