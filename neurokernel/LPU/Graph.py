@@ -93,15 +93,15 @@ class Graph(object):
         else:
             self.graph.add_edge(port, node, **kwargs)
 
-    def add_port(self, name, **kwargs):
+    def add_port(self, node, **kwargs):
         """Add a single port.
 
         Parameters
         ----------
-        name : hashable Python object
-            A hashable Python object except None. If 'name' is an existing
-            node, a neuron or a synapse, 'name' will be inferred using the
-            convention 'name' + "_port".
+        node : hashable Python object
+            A hashable Python object except None. If 'node' is an existing
+            node, a neuron or a synapse, 'node' will be inferred using the
+            convention 'node' + "_port".
         selector : string
             A xpath-like string.
         port_type : string
@@ -114,9 +114,9 @@ class Graph(object):
             'port' has higher priority than 'port_io' and 'port_type'.
         source_or_target : hashable Python object or None
             The source or the target of the port, depending on 'port_type'.
-            If 'name' is an existing node, 'source_or_target' should be given
-            as None, and will be replaced by 'name'. If 'source_or_target' is
-            not None or inferred from 'name', the connection between the port
+            If 'node' is an existing node, 'source_or_target' should be given
+            as None, and will be replaced by 'node'. If 'source_or_target' is
+            not None or inferred from 'node', the connection between the port
             and its correcsponding node will be set up.
 
         Examples
@@ -126,7 +126,7 @@ class Graph(object):
         >>> G.add_port('1_port', '/lpu/out/spike/1', port='so')
         >>> G.connect_port('1', '1_port')
 
-        It is recommended to pass an exisitng node as 'name' to add port. By
+        It is recommended to pass an exisitng node as 'node' to add port. By
         doing so, the id of the port will be inferred, and the link between
         the port and the exsiting node will be connected automatically.
 
@@ -134,7 +134,7 @@ class Graph(object):
         >>> G.add_neuron('1', 'LeakyIAF')
         >>> G.add_port('1', port='so')
 
-        Alternatively, one can specify the port name. In this case, it is of
+        Alternatively, one can specify the port 'node'. In this case, it is of
         best practice to provide 'source_or_target'. Otherwise, 'connect_port'
         has to be called later to connect the port and its correcsponding node,
         as demonstrated in the first example.
@@ -174,14 +174,14 @@ class Graph(object):
             port_io = 'out'
         assert(port_io == 'in' or port_io == 'out')
 
-        if name in self.graph:
+        if node in self.graph:
             assert(source_or_target is None)
-            source_or_target = name
-            name = "%s_port" % name
+            source_or_target = node
+            node = "%s_port" % node
 
         kwargs['class'] = u'Port'
         delay = self._get_delay(kwargs)
-        self.graph.add_node(name,
+        self.graph.add_node(node,
             kwargs,
             port_io = port_io,
             port_type = port_type,
@@ -190,16 +190,16 @@ class Graph(object):
         if source_or_target is not None:
             assert(source_or_target in self.graph)
             if port_io == 'out':
-                self.graph.add_edge(source_or_target, name)
+                self.graph.add_edge(source_or_target, node)
             else:
-                self.graph.add_edge(name, source_or_target, **delay)
+                self.graph.add_edge(node, source_or_target, **delay)
 
-    def add_neuron(self, name, model, **kwargs):
+    def add_neuron(self, node, model, **kwargs):
         """Add a single neuron.
 
         Parameters
         ----------
-        name : node
+        node : node
             A node can be any hashable Python object except None.
         model : string or submodule of NDComponent
             Name or the Python class of a neuron model.
@@ -226,7 +226,7 @@ class Graph(object):
         """
         model, params, states, attrs = self._parse_model_kwargs(model, **kwargs)
 
-        self.graph.add_node(name,
+        self.graph.add_node(node,
             {'class':model, 'params':params, 'states':states},
             **attrs)
 
@@ -249,21 +249,21 @@ class Graph(object):
                     attr[k] = v
                     break
 
-    def add_synapse(self, name, source, target, model, **kwargs):
+    def add_synapse(self, node, source, target, model, **kwargs):
         """Add a single synapse.
 
         Parameters
         ----------
-        name : hashable
-            A name can be any hashable Python object except None.
+        node : hashable
+            A node can be any hashable Python object except None.
         source : hashable or None
             A source can be any hashable Python object except None. The hash
             value of the pre-synaptic neuron. If None, the edge between 'source'
-            and 'name' will be omitted.
+            and 'node' will be omitted.
         target : hashable or None
             A target can be any hashable Python object except None. The hash
             value of the post-synaptic neuron. If None, the edge between
-            'target' and 'name' will be omitted.
+            'target' and 'node' will be omitted.
         model : string or submodule of NDComponent
             Name or the Python class of a neuron model.
         params : dict
@@ -292,14 +292,14 @@ class Graph(object):
         model, params, states, attrs = self._parse_model_kwargs(model, **kwargs)
         delay = self._get_delay(attrs)
 
-        self.graph.add_node(name,
+        self.graph.add_node(node,
             {'class':model, 'params':params, 'states':states},
             **attrs)
 
         if source:
-            self.graph.add_edge(source, name, **delay)
+            self.graph.add_edge(source, node, **delay)
         if target:
-            self.graph.add_edge(name, target)
+            self.graph.add_edge(node, target)
 
     def _get_delay(self, attrs):
         delay = attrs.pop('delay', None)

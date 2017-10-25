@@ -10,7 +10,7 @@ import sys
 import numpy as np
 import h5py
 import networkx as nx
-from neurokernel.LPU.graph import Graph
+from neurokernel.LPU.Graph import Graph
 
 def create_lpu_graph(lpu_name, N_sensory, N_local, N_proj):
     """
