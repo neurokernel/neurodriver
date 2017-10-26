@@ -176,12 +176,12 @@ def create_lpu_graph(lpu_name, N_sensory, N_local, N_proj):
             # TODO
             name = G.graph.node[pre_id]['name'] + '-' + G.graph.node[post_id]['name']
             synapse_id = 'synapse_' + name
-            if G.graph.node[pre_id]['class'] is 'LeakyIAF':
+            if G.graph.node[pre_id]['class'].__name__ is 'LeakyIAF':
                 G.add_synapse(synapse_id, pre_id, post_id, 'AlphaSynapse',
                     name = name,
                     ad = 1.9 * 1e3,
-                    reverse = 65.0 if G.graph.node[post_id]['class'] is 'LeakyIAF' else 10.0,
-                    gmax = 3 * 1e-6 if G.graph.node[post_id]['class'] is 'LeakyIAF' else 3.1e-7,
+                    reverse = 65.0 if G.graph.node[post_id]['class'].__name__ is 'LeakyIAF' else 10.0,
+                    gmax = 3 * 1e-6 if G.graph.node[post_id]['class'].__name__ is 'LeakyIAF' else 3.1e-7,
                     circuit = 'local')
             else:
                 G.add_synapse(synapse_id, pre_id, post_id, 'PowerGPotGPot',
