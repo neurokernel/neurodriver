@@ -27,7 +27,7 @@ class FileInputProcessor(BaseInputProcessor):
         for var, dset in self.dsets.iteritems():
             if self.pointer+1 == dset.shape[0]: self.end_of_file=True
             self.variables[var]['input'] = dset[self.pointer,:]
-            self.pointer += 1
+        self.pointer += 1
         if self.end_of_file: self.h5file.close()
             
     def is_input_available(self):
