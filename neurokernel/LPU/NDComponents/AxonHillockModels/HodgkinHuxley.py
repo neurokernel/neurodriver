@@ -76,6 +76,7 @@ class HodgkinHuxley(BaseAxonHillockModel):
         template = """
 #define EXP exp%(fletter)s
 #define POW pow%(fletter)s
+#define ABS fabs%(fletter)s
 
 __global__ void update(
     int num_comps,
@@ -114,13 +115,13 @@ __global__ void update(
         for (int j = 0; j < nsteps; ++j)
         {
             a = exp(-(V+55)/10)-1;
-            if (abs(a) <= 1e-7)
+            if (ABS(a) <= 1e-7)
                 dn = (1.-n) * 0.1 - n * (0.125*EXP(-(V+65.)/80.));
             else
                 dn = (1.-n) * (-0.01*(V+55.)/a) - n * (0.125*EXP(-(V+65)/80));
 
             a = exp(-(V+40.)/10.)-1.;
-            if (abs(a) <= 1e-7)
+            if (ABS(a) <= 1e-7)
                 dm = (1.-m) - m*(4*EXP(-(V+65)/18));
             else
                 dm = (1.-m) * (-0.1*(V+40.)/a) - m * (4.*EXP(-(V+65.)/18.));
