@@ -8,7 +8,7 @@ from pycuda.tools import dtype_to_ctype
 import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
-from BaseAxonHillockModel import BaseAxonHillockModel
+from .BaseAxonHillockModel import BaseAxonHillockModel
 
 class HodgkinHuxley(BaseAxonHillockModel):
     updates = ['spike_state', 'V']

@@ -1,7 +1,7 @@
 import h5py
 import numpy as np
 
-from BaseInputProcessor import BaseInputProcessor
+from .BaseInputProcessor import BaseInputProcessor
 class FileInputProcessor(BaseInputProcessor):
     def __init__(self, filename, mode=0):
         self.filename = filename
@@ -12,8 +12,8 @@ class FileInputProcessor(BaseInputProcessor):
             uids = g.get('uids')[()].tolist()
             var_list.append((var, uids))
         super(FileInputProcessor, self).__init__(var_list, mode)
-        h5file.close()    
-        
+        h5file.close()
+
     def pre_run(self):
         self.h5file = h5py.File(self.filename, 'r')
         self.dsets = {}
@@ -22,18 +22,16 @@ class FileInputProcessor(BaseInputProcessor):
             self.dsets[var] = g.get('data')
         self.pointer = 0
         self.end_of_file = False
-        
+
     def update_input(self):
         for var, dset in self.dsets.iteritems():
             if self.pointer+1 == dset.shape[0]: self.end_of_file=True
             self.variables[var]['input'] = dset[self.pointer,:]
             self.pointer += 1
         if self.end_of_file: self.h5file.close()
-            
+
     def is_input_available(self):
         return not self.end_of_file
-        
+
     def post_run(self):
         if not self.end_of_file: self.h5file.close()
-
-    

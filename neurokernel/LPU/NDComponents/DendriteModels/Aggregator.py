@@ -10,7 +10,7 @@ import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
 from neurokernel.LPU.utils.simpleio import *
-from BaseDendriteModel import BaseDendriteModel
+from .BaseDendriteModel import BaseDendriteModel
 
 class Aggregator(BaseDendriteModel):
     accesses = ['g','V']
@@ -29,12 +29,12 @@ class Aggregator(BaseDendriteModel):
         self.debug = debug
         self.dt = dt
         self.LPU_id = LPU_id
-        
+
         self.num_comps = params_dict['pre']['V'].size
 
-        
+
         self.update = self.get_update_func(self.access_buffers['g'].dtype)
-            
+
     def run_step(self, update_pointers, st=None):
         self.update.prepared_async_call(\
                         self.grid, self.block, st,
@@ -52,8 +52,8 @@ class Aggregator(BaseDendriteModel):
                         self.access_buffers['V'].current,                     #i
                         self.params_dict['pre']['V'].gpudata,                 #P
                         update_pointers['I'])                                 #P
-        
-        
+
+
     def get_update_func(self, dtype=np.double):
         template = """
         #define NUM_COMPS %(num_comps)d
@@ -101,7 +101,7 @@ class Aggregator(BaseDendriteModel):
             if(comp < NUM_COMPS)
             {
                int dl;
-               int col; 
+               int col;
                int n_pre = num_pre[tidy];
                int start = pre_start[tidy];
                double VV = V_in[tidy];
@@ -116,13 +116,13 @@ class Aggregator(BaseDendriteModel):
                      col = buffer_length + col;
                    }
 
-                   input[tidy][tidx] += g[pre[start + i] + col*ld] * 
+                   input[tidy][tidx] += g[pre[start + i] + col*ld] *
                                         (VV - V_rev[start + i]);
                }
             }
 
             __syncthreads();
-    
+
             if(tidy < 8)
             {
                 input[tidx][tidy] += input[tidx][tidy + 8];
@@ -158,11 +158,10 @@ class Aggregator(BaseDendriteModel):
         }
         """
         mod = SourceModule(template % {"num_comps": self.num_comps,
-                                       "type": dtype_to_ctype(dtype)}, 
+                                       "type": dtype_to_ctype(dtype)},
                            options=self.compile_options)
         func = mod.get_function("aggregate_I")
         func.prepare('PiiiPPPPPPiiPP')
         self.block = (32, 32, 1)
         self.grid = ((self.num_comps - 1) / 32 + 1, 1)
         return func
-

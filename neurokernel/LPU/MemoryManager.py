@@ -1,4 +1,4 @@
-import utils.parray as parray
+from .utils import parray
 import pycuda.gpuarray as garray
 from pycuda.tools import dtype_to_ctype
 import pycuda.elementwise as elementwise
@@ -18,7 +18,7 @@ class MemoryManager(object):
         self.variables = {}
         self.parameters = {}
         self.mapping = {}          #Mapping from [model_name->variable/parameter]->pos
-        
+
     def get_buffer(self, variable_name):
         return self.variables[variable_name]['buffer']
 
@@ -38,7 +38,7 @@ class MemoryManager(object):
                                        buff.current*buff.ld*\
                                        buff.dtype.itemsize)
             self._fill_zeros_kernel(dest_mem, garray.to_gpu(dest_inds))
-        elif model and not variable: 
+        elif model and not variable:
             for var, d in self.variables.iteritems():
                 if model in d['models']:
                     mind = d['models'].index(model)
@@ -63,7 +63,7 @@ class MemoryManager(object):
                                            buff.current*buff.ld*\
                                            buff.dtype.itemsize)
                 self._fill_zeros_kernel(dest_mem, garray.to_gpu(dest_inds))
-        
+
     def mutate_parameter(self, model_name, param, transform):
         pass
 
@@ -73,7 +73,7 @@ class MemoryManager(object):
         self.variables[variable_name] = {'buffer': \
                             CircularArray(size, buffer_length, dtype, init)}
         self.variables[variable_name].update(info)
-            
+
     def params_htod(self, model_name, param_dict, dtype=np.double):
         if model_name in self.parameters:
             assert(not (set(self.parameters[model_name].keys()) &
@@ -101,7 +101,7 @@ class MemoryManager(object):
                 self.parameters[model_name]['conn_data'] = cd
             if not all([isinstance(i,numbers.Number) for i in v]): continue
             self.parameters[model_name][k] = garray.to_gpu(np.array(v, dtype))
-            
+
     def step(self):
         for d in self.variables.values():
             d['buffer'].step()
@@ -164,7 +164,7 @@ class CircularArray(object):
         self.size = size
         if not isinstance(dtype, np.dtype): dtype = np.dtype(dtype)
         self.dtype = dtype
-        
+
         self.buffer_length = buffer_length
         if init:
             try:
@@ -180,8 +180,8 @@ class CircularArray(object):
         self.current = 0
         self.gpudata = self.parr.gpudata
         self.ld = self.parr.ld
-        
-        
+
+
     def step(self):
         """
         Advance indices of current graded potential and spiking neuron values.
