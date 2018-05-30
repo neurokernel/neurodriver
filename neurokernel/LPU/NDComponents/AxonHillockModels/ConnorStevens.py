@@ -14,7 +14,7 @@ class ConnorStevens(BaseAxonHillockModel):
     updates = ['spike_state', 'V']
     accesses = ['I']
     params = ['n','m','h','a','b']
-    internals = OrderedDict([('internalV',-65.)])
+    internals = OrderedDict([('internalV',-65.),('internalVprev1',-65.),('internalVprev2',-65.)])
 
     def __init__(self, params_dict, access_buffers, dt,
                  debug=False, LPU_id=None, cuda_verbose=True):
@@ -56,6 +56,12 @@ class ConnorStevens(BaseAxonHillockModel):
                              self.params_dict['initV'].gpudata,
                              self.params_dict['initV'].nbytes)
             cuda.memcpy_dtod(self.internal_states['internalV'].gpudata,
+                             self.params_dict['initV'].gpudata,
+                             self.params_dict['initV'].nbytes)
+            cuda.memcpy_dtod(self.internal_states['internalVprev1'].gpudata,
+                             self.params_dict['initV'].gpudata,
+                             self.params_dict['initV'].nbytes)
+            cuda.memcpy_dtod(self.internal_states['internalVprev2'].gpudata,
                              self.params_dict['initV'].gpudata,
                              self.params_dict['initV'].nbytes)
 
@@ -101,6 +107,8 @@ __global__ void update(
     %(a)s* g_a,
     %(b)s* g_b,
     %(internalV)s* g_internalV,
+    %(internalVprev1)s* g_internalVprev1,
+    %(internalVprev2)s* g_internalVprev2,
     %(spike_state)s* g_spike_state,
     %(V)s* g_V)
 {
@@ -123,13 +131,15 @@ __global__ void update(
     for(int i = tid; i < num_comps; i += total_threads)
     {
         spike = 0;
-        V = g_internalV[i];
         I = g_I[i];
         n = g_n[i];
         m = g_m[i];
         h = g_h[i];
         a = g_a[i];
         b = g_b[i];
+        V = g_internalV[i];
+        Vprev1 = g_internalVprev1[i];
+        Vprev2 = g_internalVprev2[i];
 
         for (int j = 0; j < nsteps; ++j)
         {
@@ -176,6 +186,8 @@ __global__ void update(
         g_b[i] = b;
         g_V[i] = V;
         g_internalV[i] = V;
+        g_internalVprev1[i] = Vprev1;
+        g_internalVprev2[i] = Vprev2;
         g_spike_state[i] = (spike > 0);
     }
 }
@@ -212,7 +224,7 @@ if __name__ == '__main__':
     import neurokernel.mpi_relaunch
 
     dt = 1e-4
-    dur = 1.0
+    dur = 0.3
     steps = int(dur/dt)
 
     parser = argparse.ArgumentParser()
@@ -239,7 +251,7 @@ if __name__ == '__main__':
 
     G = nx.MultiDiGraph()
 
-    G.add_node('neuron0', {
+    G.add_node('neuron0', **{
                'class': 'ConnorStevens',
                'name': 'ConnorStevens',
                'n': 0.,
@@ -251,7 +263,7 @@ if __name__ == '__main__':
 
     comp_dict, conns = LPU.graph_to_dicts(G)
 
-    fl_input_processor = StepInputProcessor('I', ['neuron0'], 40, 0.2, 0.8)
+    fl_input_processor = StepInputProcessor('I', ['neuron0'], 40, 0.15, 0.25)
     fl_output_processor = FileOutputProcessor([('spike_state', None),('V', None)], 'new_output.h5', sample_interval=1)
 
     man.add(LPU, 'ge', dt, comp_dict, conns,
@@ -265,15 +277,28 @@ if __name__ == '__main__':
     # plot the result
     import h5py
     import matplotlib
-    matplotlib.use('PS')
+    matplotlib.use('Agg')
     import matplotlib.pyplot as plt
 
     f = h5py.File('new_output.h5')
     t = np.arange(0, args.steps)*dt
 
     plt.figure()
+    plt.subplot(211)
     plt.plot(t,f['V'].values()[0])
     plt.xlabel('time, [s]')
     plt.ylabel('Voltage, [mV]')
     plt.title('Connor-Stevens Neuron')
+    plt.xlim([0, dur])
+    plt.ylim([-70, 60])
+    plt.grid()
+    plt.subplot(212)
+    spk = f['spike_state/data'].value.flatten().nonzero()[0]
+    plt.stem(t[spk],np.ones((len(spk),)))
+    plt.xlabel('time, [s]')
+    plt.ylabel('Spike')
+    plt.xlim([0, dur])
+    plt.ylim([0, 1.2])
+    plt.grid()
+    plt.tight_layout()
     plt.savefig('csn.png',dpi=300)
