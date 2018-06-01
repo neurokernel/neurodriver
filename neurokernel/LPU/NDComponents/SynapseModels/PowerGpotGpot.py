@@ -8,7 +8,7 @@ from pycuda.tools import dtype_to_ctype
 import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
-from BaseSynapseModel import BaseSynapseModel
+from .BaseSynapseModel import BaseSynapseModel
 
 #This class assumes a single pre synaptic connection per component instance
 class PowerGPotGPot(BaseSynapseModel):
@@ -110,7 +110,7 @@ __global__ void PowerGPotGPot(int num_comps, %(dt)s dt, int steps,
         func.prepare('i'+np.dtype(dtypes['dt']).char+'i'+'P'*(len(type_dict)-2))
         func.block = (256,1,1)
         func.grid = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
-                         (self.num_comps-1) / 256 + 1), 1)
+                         (self.num_comps-1) // 256 + 1), 1)
         return func
 
 

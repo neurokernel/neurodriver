@@ -123,7 +123,7 @@ for i, neu_num in neu_dict.iteritems():
     lpu_dict[id] = lpu_entry
 
 # Create connectivity patterns between each combination of LPU pairs:
-for id_0, id_1 in itertools.combinations(lpu_dict.keys(), 2):
+for id_0, id_1 in itertools.combinations(list(lpu_dict.keys()), 2):
 
     comp_dict_0 = lpu_dict[id_0]['comp_dict']
     comp_dict_1 = lpu_dict[id_1]['comp_dict']

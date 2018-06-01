@@ -1,4 +1,4 @@
-from BaseSynapseModel import BaseSynapseModel
+from .BaseSynapseModel import BaseSynapseModel
 
 import numpy as np
 
@@ -54,7 +54,7 @@ __global__ void alpha_synapse(
             {
                 col = buffer_length + col;
             }
-            pre = col*ld + Pre[cumpre[i]]; 
+            pre = col*ld + Pre[cumpre[i]];
             if( spike[pre] )
                 new_a[1] += ar*ad;
             new_a[2] = -( ar+ad )*old_a[1] - ar*ad*old_a[0];
@@ -75,7 +75,7 @@ __global__ void alpha_synapse(
 """
 class AlphaSynapse(BaseSynapseModel):
     accesses = ['spike_state']
-    
+
     def __init__( self, params_dict, access_buffers, dt,
                   LPU_id=None, debug=False, cuda_verbose=False):
         if cuda_verbose:
@@ -87,17 +87,17 @@ class AlphaSynapse(BaseSynapseModel):
         self.dt = dt
         self.num = params_dict['gmax'].size
         self.LPU_id = LPU_id
-        
+
         self.params_dict = params_dict
         self.access_buffers = access_buffers
 
         self.a0   = garray.zeros( (self.num,), dtype=np.float64 )
         self.a1   = garray.zeros( (self.num,), dtype=np.float64 )
         self.a2   = garray.zeros( (self.num,), dtype=np.float64 )
-        
+
         self.update = self.get_gpu_kernel(params_dict['gmax'].dtype)
 
-        
+
     def run_step(self, update_pointers, st = None):
         self.update.prepared_async_call(
             self.gpu_grid,\
@@ -124,7 +124,7 @@ class AlphaSynapse(BaseSynapseModel):
     def get_gpu_kernel(self, dtype=np.double):
         self.gpu_block = (128,1,1)
         self.gpu_grid = (min( 6*cuda.Context.get_device().MULTIPROCESSOR_COUNT,\
-                              (self.num-1)/self.gpu_block[0] + 1), 1)
+                              (self.num-1)//self.gpu_block[0] + 1), 1)
         mod = SourceModule( \
                 cuda_src % {"type": dtype_to_ctype(dtype)},\
                             options=self.compile_options)

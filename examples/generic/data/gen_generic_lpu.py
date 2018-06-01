@@ -285,7 +285,7 @@ def create_input(file_name, N_sensory, dt=1e-4, dur=1.0, start=0.3, stop=0.6, I_
 
     uids = ["sensory_" + str(i) for i in range(N_sensory)]
 
-    uids = np.array(uids)
+    uids = np.array(uids, dtype = 'S')
 
     I = np.zeros((Nt, N_sensory), dtype=np.float64)
     I[np.logical_and(t > start, t < stop)] = I_max
@@ -317,7 +317,7 @@ if __name__ == '__main__':
     start = 0.3
     stop = 0.6
     I_max = 0.6
-    neu_num = [np.random.randint(31, 40) for i in xrange(3)]
+    neu_num = [np.random.randint(31, 40) for i in range(3)]
 
     create_lpu(args.lpu_file_name, args.lpu, *neu_num)
     g = nx.read_gexf(args.lpu_file_name)

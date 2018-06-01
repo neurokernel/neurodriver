@@ -1,4 +1,4 @@
-import utils.parray as parray
+from .utils import parray
 import pycuda.gpuarray as garray
 from pycuda.tools import dtype_to_ctype
 import pycuda.elementwise as elementwise
@@ -39,7 +39,7 @@ class MemoryManager(object):
                                        buff.dtype.itemsize)
             self._fill_zeros_kernel(dest_mem, garray.to_gpu(dest_inds))
         elif model and not variable:
-            for var, d in self.variables.iteritems():
+            for var, d in self.variables.items():
                 if model in d['models']:
                     mind = d['models'].index(model)
                     stind = d['cumlen'][mind]
@@ -76,8 +76,8 @@ class MemoryManager(object):
 
     def params_htod(self, model_name, param_dict, dtype=np.double):
         if model_name in self.parameters:
-            assert(not (set(self.parameters[model_name].keys()) &
-                        set(param_dict.keys())))
+            assert(not (set(self.parameters[model_name]) &
+                        set(param_dict)))
         else:
             self.parameters[model_name] = {}
 
@@ -85,7 +85,7 @@ class MemoryManager(object):
             if k in ['pre','npre','cumpre']:
                 self.parameters[model_name][k] = \
                                 {var: garray.to_gpu(np.array(v[var],np.int32))\
-                                 for var in v.keys()}
+                                 for var in v}
                 continue
             if k=='conn_data':
                 cd = {}

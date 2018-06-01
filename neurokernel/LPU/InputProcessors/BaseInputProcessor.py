@@ -26,7 +26,7 @@ class BaseInputProcessor(object):
         self.dtypes = {}
         self._d_input = {}
         self.dest_inds = {}
-        
+
     @property
     def LPU_obj(self):
         return self._LPU_obj
@@ -37,7 +37,7 @@ class BaseInputProcessor(object):
         self._LPU_obj = value
         self.dt = self._LPU_obj.dt
         self.memory_manager = self._LPU_obj.memory_manager
-        
+
     def run_step(self):
         if not self.is_input_available():
             if self.mode == 0:
@@ -54,7 +54,7 @@ class BaseInputProcessor(object):
         self.update_input()
         for var in self.variables:
             self._d_input[var].set(self.variables[var]['input'])
-            
+
     def inject_input(self, var):
         if var not in self.variables: return
         if not self.input_to_be_processed: return
@@ -64,7 +64,7 @@ class BaseInputProcessor(object):
                                    buff.current*buff.ld*\
                                    buff.dtype.itemsize)
         self.add_inds(self._d_input[var], dest_mem, self.dest_inds[var])
-        
+
     # Should be implemented by child class
     def update_input(self):
         raise NotImplementedError
@@ -92,7 +92,7 @@ class BaseInputProcessor(object):
             self.variables[var]['input'] = np.zeros(len(d['uids']),
                                                     self.dtypes[var])
         self.pre_run()
-        
+
     def pre_run(self):
         pass
 

@@ -8,7 +8,7 @@ from pycuda.tools import dtype_to_ctype
 import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
-from BaseAxonHillockModel import BaseAxonHillockModel
+from .BaseAxonHillockModel import BaseAxonHillockModel
 
 class ConnorStevens(BaseAxonHillockModel):
     updates = ['spike_state', 'V']
@@ -51,7 +51,7 @@ class ConnorStevens(BaseAxonHillockModel):
         self.update_func = self.get_update_func(dtypes)
 
     def pre_run(self, update_pointers):
-        if self.params_dict.has_key('initV'):
+        if 'initV' in self.params_dict:
             cuda.memcpy_dtod(int(update_pointers['V']),
                              self.params_dict['initV'].gpudata,
                              self.params_dict['initV'].nbytes)
@@ -203,7 +203,7 @@ __global__ void update(
         func.prepare('i'+np.dtype(dtypes['dt']).char+'i'+'P'*(len(type_dict)-2))
         func.block = (128,1,1)
         func.grid = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
-                         (self.num_comps-1) / 128 + 1), 1)
+                         (self.num_comps-1) // 128 + 1), 1)
         return func
 
 

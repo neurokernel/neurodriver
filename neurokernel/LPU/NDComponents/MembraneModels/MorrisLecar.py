@@ -8,7 +8,7 @@ from pycuda.tools import dtype_to_ctype
 import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
-from BaseMembraneModel import BaseMembraneModel
+from .BaseMembraneModel import BaseMembraneModel
 
 class MorrisLecar(BaseMembraneModel):
     params = ['V1', 'V2', 'V3', 'V4', 'phi', 'offset',
@@ -162,7 +162,7 @@ morris_lecar_multiple(int num_comps, %(dt)s dt, int nsteps,
         func.prepare('i'+np.dtype(dtypes['dt']).char+'i'+'P'*(len(type_dict)-2))
         func.block = (256,1,1)
         func.grid = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
-                         (self.num_comps-1) / 256 + 1), 1)
+                         (self.num_comps-1) // 256 + 1), 1)
         return func
 
 

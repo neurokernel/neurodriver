@@ -8,7 +8,7 @@ import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
 from neurokernel.LPU.utils.simpleio import *
-from BaseAxonHillockModel import BaseAxonHillockModel
+from .BaseAxonHillockModel import BaseAxonHillockModel
 
 class LeakyIAFwithRefactoryPeriod(BaseAxonHillockModel):
     updates = ['spike_state', 'V']
@@ -137,7 +137,7 @@ __global__ void update(int num_comps, %(dt)s dt,
         func.prepare('i'+np.dtype(dtypes['dt']).char+'P'*(len(type_dict)-2))
         func.block = (256,1,1)
         func.grid = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
-                         (self.num_comps-1) / 256 + 1), 1)
+                         (self.num_comps-1) // 256 + 1), 1)
         return func
 
 

@@ -22,7 +22,7 @@ import numpy as np
 from scipy.interpolate import griddata
 from shutilwhich import which
 
-import simpleio as sio
+from . import simpleio as sio
 
 class visualizer(object):
     """
@@ -109,10 +109,10 @@ class visualizer(object):
             These arguments will only be used to set these attributes for
             input h5 files. For all other cases, these will be read from
             the h5 file
-        
+
         All arguments beyond LPU should be considered strictly keyword only
         """
-        
+
         if is_input:
             LPU = 'input_' + str(LPU)
             self._sample_intervals[LPU] = sample_interval
@@ -122,22 +122,22 @@ class visualizer(object):
             self._uids[LPU] = {}
             self._data[LPU] = {}
             for k, d in f.items():
-                self._uids[LPU][k] = f[k]['uids'].value
+                self._uids[LPU][k] = (a.decode('utf8') for a in f[k]['uids'].value)
                 self._data[LPU][k] = np.transpose(f[k]['data'].value,
                                                   axes = transpose_axes)
-                
+
             self._config[LPU] = []
             if self._maxt:
                 self._maxt = min(self._maxt,
                                  (self._data[LPU][k].shape[1]-1)*self._dts[LPU])
             else:
-                self._maxt = (self._data[LPU][k].shape[1]-1)*self._dts[LPU]    
+                self._maxt = (self._data[LPU][k].shape[1]-1)*self._dts[LPU]
             f.close()
             return
 
         self._config[LPU] = []
         f = h5py.File(data_file)
-            
+
         self._sample_intervals[LPU] = f['metadata'].attrs['sample_interval']
         self._dts[LPU] = f['metadata'].attrs['dt'] * self._sample_intervals[LPU]
         self._start_times[LPU] = f['metadata'].attrs['start_time']
@@ -145,21 +145,21 @@ class visualizer(object):
         self._data[LPU] = {}
         for k, d in f.items():
             if k=='metadata': continue
-            self._uids[LPU][k] = f[k]['uids'].value
+            self._uids[LPU][k] = (a.decode('utf8') for a in f[k]['uids'].value)
             self._data[LPU][k] = np.transpose(f[k]['data'].value,
                                               axes = transpose_axes)
-        
+
         if win is not None:
-            for k in self._data[LPU].keys():
+            for k in self._data[LPU]:
                 self._data[LPU][k] = self._data[LPU][k][:,win]
-        k = self._data[LPU].keys()[0]
+        k = list(self._data[LPU])[0]
         if self._maxt:
             self._maxt = min(self._maxt,
                              (self._data[LPU][k].shape[1]-1)*self._dts[LPU])
         else:
             self._maxt = (self._data[LPU][k].shape[1]-1)*self._dts[LPU]
         f.close()
-        
+
     def run(self, final_frame_name=None, dpi=300):
         """
         Starts the visualization process.
@@ -218,7 +218,7 @@ class visualizer(object):
 
         # Count number of plots to create:
         num_plots = 0
-        for config in self._config.itervalues():
+        for var, config in self._config.items():
             num_plots += len(config)
 
         # Set default grid of plot positions:
@@ -229,7 +229,7 @@ class visualizer(object):
                                           figsize=self._figsize)
 
         # Remove unused subplots:
-        for i in xrange(num_plots, self._rows*self._cols):
+        for i in range(num_plots, self._rows*self._cols):
             plt.delaxes(self.axarr[np.unravel_index(i, (self._rows, self._cols))])
         cnt = 0
         self.handles = []
@@ -246,7 +246,7 @@ class visualizer(object):
         self._dome_arr_shape = X.shape
         if not isinstance(self.axarr, np.ndarray):
             self.axarr = np.asarray([self.axarr])
-        for LPU, configs in self._config.iteritems():
+        for LPU, configs in self._config.items():
             dt = self._dts[LPU]
             for plt_id, config in enumerate(configs):
                 var = config['variable']
@@ -339,7 +339,7 @@ class visualizer(object):
                     config['handle'].set_ylabel('Neurons',
                                                 fontsize=self._fontsize-1, weight='bold')
                     config['handle'].set_xlabel('Time (s)',fontsize=self._fontsize-1, weight='bold')
-                    
+
                     config['handle'].set_xlim([0,self._data[LPU][var].shape[1]*dt])
                     config['handle'].axes.set_yticks([])
                     eps = np.finfo(float).eps
@@ -359,7 +359,7 @@ class visualizer(object):
                     config['handle'].xaxis.set_ticks([])
                     config['handle'].yaxis.set_ticks([])
                     config['handle'].zaxis.set_ticks([])
-                    if 'norm' not in config.keys():
+                    if 'norm' not in config:
                         config['norm'] = Normalize(vmin=-70, vmax=0, clip=True)
                     elif config['norm'] == 'auto':
                         if self._data[LPU][var].shape[1] > 100:
@@ -370,7 +370,7 @@ class visualizer(object):
                             config['norm'] = Normalize(vmin = np.min(self._data[LPU][var][config['ids'][0],:]),
                                                        vmax = np.max(self._data[LPU][var][config['ids'][0],:]),
                                                        clip = True)
-                    
+
                     node_dict = self._graph[LPU].node
                     latpositions = config['lat']
                     longpositions = config['long']
@@ -390,7 +390,7 @@ class visualizer(object):
                                                   facecolors=colors, antialiased=False,
                                                   shade=False)
 
-                for key in config.iterkeys():
+                for key in config:
                     if key not in keywds:
                         try:
                             self._set_wrapper(self.axarr[ind],key, config[key])
@@ -441,7 +441,7 @@ class visualizer(object):
 
     def _update(self):
         t = self._t
-        for LPU, configs in self._config.iteritems():
+        for LPU, configs in self._config.items():
             dt = self._dts[LPU]
             for config in configs:
                 var = config['variable']
@@ -525,7 +525,7 @@ class visualizer(object):
                                                   facecolors=colors, antialiased=False,
                                                   shade=False)
                 keywds = ['handle', 'ydata', 'fmt', 'type', 'ids', 'shape', 'norm']
-                for key in config.iterkeys():
+                for key in config:
                     if key not in keywds:
                         try:
                             self._set_wrapper(self.axarr[ind],key, config[key])
@@ -584,10 +584,10 @@ class visualizer(object):
                 The value will be the magnitude of the same vector.
 
                 This parameter must be specified for plots of type 'HSV' or 'quiver'
-        
+
                 If not specified, all components in the h5 file for which that variable was recorded
                 will be plotted
-        
+
             shape - list or tuple with two entries
                 This attribute specifies the dimensions for plots of type image,
                 hsv or quiver.
@@ -608,13 +608,15 @@ class visualizer(object):
         var = config['variable']
         assert(LPU in self._uids and LPU in self._data)
         if 'uids' in config:
-            if not (isinstance(config['uids'], list) or 
+            if not (isinstance(config['uids'], list) or
                     isinstance(config['uids'], np.ndarray)):
                 config['uids'] = [config['uids']]
             config['ids'] = []
             for uids in config['uids']:
-                config['ids'].append([np.where(self._uids[LPU][var]==uid)[0][0]
-                                      for uid in uids])
+                for uid in uids:
+                    tmp = np.where(self._uids[LPU][var]==uid)[0]
+                    if len(tmp):
+                        config['ids'].append(tmp[0])
             self._config[LPU].append(config)
         elif str(LPU).startswith('input'):
             config['ids'] = [range(0, self._data[LPU][var].shape[0])]
@@ -631,7 +633,7 @@ class visualizer(object):
                 for id in range(len(self._graph[LPU].node)):
                     if self._graph[LPU].node[str(id)]['name'] == name:
                         config['ids'][i].append(id-shift)
-            
+
             self._config[LPU].append(config)
             '''
         if not 'title' in config:
@@ -681,7 +683,7 @@ class visualizer(object):
 
     @property
     def FFMpeg(self): return self._FFMpeg
-    
+
     @FFMpeg.setter
     def FFMpeg(self, value):
         self._FFMpeg = value
