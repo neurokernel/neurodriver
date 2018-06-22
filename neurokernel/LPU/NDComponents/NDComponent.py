@@ -5,6 +5,7 @@ import warnings
 from abc import ABCMeta, abstractmethod, abstractproperty
 import os.path
 import numpy as np
+from future.utils import with_metaclass
 
 import pycuda.gpuarray as garray
 from pycuda.tools import dtype_to_ctype
@@ -13,8 +14,8 @@ from pycuda.compiler import SourceModule
 
 from neurokernel.LPU.utils.simpleio import *
 
-class NDComponent(object):
-    __metaclass__ = ABCMeta
+class NDComponent(with_metaclass(ABCMeta, object)):
+    # __metaclass__ = ABCMeta
 
     accesses = []
     updates = []

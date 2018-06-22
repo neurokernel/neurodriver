@@ -10,6 +10,7 @@ import itertools
 import os
 import h5py
 
+from future.utils import itervalues, iteritems
 import matplotlib
 from matplotlib import cm
 from matplotlib.colors import Normalize
@@ -121,8 +122,8 @@ class visualizer(object):
             f = h5py.File(data_file)
             self._uids[LPU] = {}
             self._data[LPU] = {}
-            for k, d in f.items():
-                self._uids[LPU][k] = (a.decode('utf8') for a in f[k]['uids'].value)
+            for k, d in iteritems(f):
+                self._uids[LPU][k] = [a.decode('utf8') for a in f[k]['uids'].value]
                 self._data[LPU][k] = np.transpose(f[k]['data'].value,
                                                   axes = transpose_axes)
 
@@ -143,9 +144,9 @@ class visualizer(object):
         self._start_times[LPU] = f['metadata'].attrs['start_time']
         self._uids[LPU] = {}
         self._data[LPU] = {}
-        for k, d in f.items():
+        for k, d in iteritems(f):
             if k=='metadata': continue
-            self._uids[LPU][k] = (a.decode('utf8') for a in f[k]['uids'].value)
+            self._uids[LPU][k] = [a.decode('utf8') for a in f[k]['uids'].value]
             self._data[LPU][k] = np.transpose(f[k]['data'].value,
                                               axes = transpose_axes)
 
@@ -218,7 +219,7 @@ class visualizer(object):
 
         # Count number of plots to create:
         num_plots = 0
-        for var, config in self._config.items():
+        for config in itervalues(self._config):
             num_plots += len(config)
 
         # Set default grid of plot positions:
@@ -246,7 +247,7 @@ class visualizer(object):
         self._dome_arr_shape = X.shape
         if not isinstance(self.axarr, np.ndarray):
             self.axarr = np.asarray([self.axarr])
-        for LPU, configs in self._config.items():
+        for LPU, configs in iteritems(self._config):
             dt = self._dts[LPU]
             for plt_id, config in enumerate(configs):
                 var = config['variable']
@@ -441,7 +442,7 @@ class visualizer(object):
 
     def _update(self):
         t = self._t
-        for LPU, configs in self._config.items():
+        for LPU, configs in iteritems(self._config):
             dt = self._dts[LPU]
             for config in configs:
                 var = config['variable']
@@ -613,10 +614,12 @@ class visualizer(object):
                 config['uids'] = [config['uids']]
             config['ids'] = []
             for uids in config['uids']:
+                tmp_list = []
                 for uid in uids:
-                    tmp = np.where(self._uids[LPU][var]==uid)[0]
+                    tmp = np.where(np.array(self._uids[LPU][var])==uid)[0]
                     if len(tmp):
-                        config['ids'].append(tmp[0])
+                        tmp_list.append(tmp[0])
+                config['ids'].append(tmp_list)
             self._config[LPU].append(config)
         elif str(LPU).startswith('input'):
             config['ids'] = [range(0, self._data[LPU][var].shape[0])]

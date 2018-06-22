@@ -1,8 +1,11 @@
-import pycuda.gpuarray as garray
+
+from future.utils import listvalues
 import numpy as np
-from neurokernel.LPU.LPU import LPU
+import pycuda.gpuarray as garray
 from pycuda.tools import dtype_to_ctype, context_dependent_memoize
 import pycuda.elementwise as elementwise
+
+from neurokernel.LPU.LPU import LPU
 
 class BaseOutputProcessor(object):
     def __init__(self, var_list, sample_interval=1):
@@ -57,8 +60,8 @@ class BaseOutputProcessor(object):
         for var, d in self.variables.items():
             v_dict =  self.memory_manager.variables[var]
             if not d['uids']:
-                uids = list(v_dict['uids'].keys())
-                inds = list(v_dict['uids'].values())
+                uids = list(v_dict['uids'])
+                inds = listvalues(v_dict['uids'])
                 o = np.argsort(inds)
                 d['uids'] = [uids[i] for i in o]
                 self.src_inds[var] = garray.to_gpu(np.arange(len(d['uids'])))

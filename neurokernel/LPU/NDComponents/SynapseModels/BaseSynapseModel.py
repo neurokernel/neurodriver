@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from abc import ABCMeta, abstractmethod, abstractproperty
+from future.utils import with_metaclass
 
 import numpy as np
 from pycuda.tools import dtype_to_ctype
@@ -9,8 +10,8 @@ from pycuda.compiler import SourceModule
 
 from neurokernel.LPU.NDComponents.NDComponent import NDComponent
 
-class BaseSynapseModel(NDComponent):
-    __metaclass__ = ABCMeta
+class BaseSynapseModel(with_metaclass(ABCMeta, NDComponent)):
+    # __metaclass__ = ABCMeta
 
     accesses = ['V']
     updates = ['g']

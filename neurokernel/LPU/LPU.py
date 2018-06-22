@@ -6,6 +6,14 @@ Local Processing Unit (LPU) with plugin support for various neuron/synapse model
 import time
 import collections
 import numbers
+import copy
+import itertools
+
+from future.utils import iteritems
+from past.builtins import long
+from builtins import zip
+
+
 import pycuda.gpuarray as garray
 from pycuda.tools import dtype_to_ctype
 import pycuda.driver as cuda
@@ -16,10 +24,6 @@ import numpy as np
 import networkx as nx
 
 #import time
-
-import copy
-import itertools
-import numbers
 
 # Work around bug in networkx < 1.9 that causes networkx to choke on GEXF
 # files with boolean attributes that contain the strings 'True' or 'False'
@@ -302,12 +306,12 @@ class LPU(Module):
         Return selectors of non-spiking input ports.
         """
         if not 'Port' in comp_dict: return ('',[])
-        a = zip(*[(sel,uid) for sel,ptype,io,uid in \
+        a = list(zip(*[(sel,uid) for sel,ptype,io,uid in \
                          zip(comp_dict['Port']['selector'],
                              comp_dict['Port']['port_type'],
                              comp_dict['Port']['port_io'],
                              comp_dict['Port'][uid_key]) if ptype=='gpot' \
-                  and io=='in'])
+                  and io=='in']))
         if not a: a = ('',[])
         return a
 
@@ -317,12 +321,12 @@ class LPU(Module):
         Return selectors of spiking input ports.
         """
         if not 'Port' in comp_dict: return ('',[])
-        a = zip(*[(sel,uid) for sel,ptype,io,uid in \
+        a = list(zip(*[(sel,uid) for sel,ptype,io,uid in \
                          zip(comp_dict['Port']['selector'],
                              comp_dict['Port']['port_type'],
                              comp_dict['Port']['port_io'],
                              comp_dict['Port'][uid_key]) if ptype=='spike' \
-                         and io=='in'])
+                         and io=='in']))
         if not a: a = ('',[])
         return a
 
@@ -332,12 +336,12 @@ class LPU(Module):
         Return selectors of non-spiking output neurons.
         """
         if not 'Port' in comp_dict: return ('',[])
-        a = zip(*[(sel,uid) for sel,ptype,io,uid in \
+        a = list(zip(*[(sel,uid) for sel,ptype,io,uid in \
                          zip(comp_dict['Port']['selector'],
                              comp_dict['Port']['port_type'],
                              comp_dict['Port']['port_io'],
                              comp_dict['Port'][uid_key]) if ptype=='gpot' \
-                  and io=='out'])
+                  and io=='out']))
         if not a: a = ('',[])
         return a
 
@@ -347,12 +351,12 @@ class LPU(Module):
         Return selectors of spiking output neurons.
         """
         if not 'Port' in comp_dict: return ('',[])
-        a = zip(*[(sel,uid) for sel,ptype,io,uid in \
+        a = list(zip(*[(sel,uid) for sel,ptype,io,uid in \
                          zip(comp_dict['Port']['selector'],
                              comp_dict['Port']['port_type'],
                              comp_dict['Port']['port_io'],
                              comp_dict['Port'][uid_key]) if ptype=='spike' \
-                  and io=='out'])
+                  and io=='out']))
         if not a: a = ('',[])
         return a
 
@@ -493,7 +497,7 @@ class LPU(Module):
 
         # Generate a uid to model map of components
         self.uid_model_map = {}
-        for model,attribs in comp_dict.items():
+        for model,attribs in iteritems(comp_dict):
             for i,uid in enumerate(attribs[uid_key]):
                 self.uid_model_map[uid] = model
 
@@ -723,7 +727,7 @@ class LPU(Module):
             start = time.time()
 
         # Add connections for component with no incoming connections
-        for uid, model in self.uid_model_map.items():
+        for uid, model in iteritems(self.uid_model_map):
             if model == 'Port':
                 continue
             for var in self._comps[model]['accesses']:
@@ -1102,11 +1106,11 @@ class LPU(Module):
                 nn = n.copy()
                 nn.pop(self.uid_key)
                 # copy integer and boolean parameters into separate dictionary
-                nn_int = {k:v for k, v in nn.items() if (isinstance(v, list)
+                nn_int = {k:v for k, v in iteritems(nn) if (isinstance(v, list)
                             and len(v) and type(v[0]) in [int, bool])}
-                nn_rest = {k:v for k, v in nn.items() if (
+                nn_rest = {k:v for k, v in iteritems(nn) if (
                            (not isinstance(v, list)) or (len(v) and
-                           type(v[0]) not in [int, bool]))}
+                           type(v[0]) not in [int, long, bool]))}
                 if nn_int:
                     self.memory_manager.params_htod(m, nn_int, np.int32)
                 if nn_rest:
@@ -1119,7 +1123,7 @@ class LPU(Module):
             if model in ['Port']: continue
             # Add memory for external inputs if required
             if model == 'Input':
-                for var, d in attribs.items():
+                for var, d in iteritems(attribs):
                     if not var in var_info:
                         var_info[var] = {'models':[],'len':[],'delay':0,'uids':[]}
                     var_info[var]['models'].append('Input')

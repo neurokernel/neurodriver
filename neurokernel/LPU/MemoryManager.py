@@ -1,3 +1,6 @@
+
+from future.utils import iteritems
+
 from .utils import parray
 import pycuda.gpuarray as garray
 from pycuda.tools import dtype_to_ctype
@@ -39,7 +42,7 @@ class MemoryManager(object):
                                        buff.dtype.itemsize)
             self._fill_zeros_kernel(dest_mem, garray.to_gpu(dest_inds))
         elif model and not variable:
-            for var, d in self.variables.items():
+            for var, d in iteritems(self.variables):
                 if model in d['models']:
                     mind = d['models'].index(model)
                     stind = d['cumlen'][mind]
