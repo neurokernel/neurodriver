@@ -57,6 +57,7 @@ class NDComponent(object):
     max_dt = None
     accesses = []
     updates = []
+
     params = OrderedDict()
     states = OrderedDict()
 
@@ -148,6 +149,7 @@ class NDComponent(object):
     def pre_run(self, update_pointers):
         self.initialize_states()
 
+
     def post_run(self):
         '''
         This method will be called at the end of the simulation.
@@ -157,7 +159,6 @@ class NDComponent(object):
     @abstractmethod
     def get_update_func(self):
         pass
-
 
     def sum_in_variable(self, var, garr, st=None):
         try:
@@ -224,7 +225,7 @@ class NDComponent(object):
 
                for(int i = tidx; i < n_pre; i += 32)
                {
-                   dl = delay[i];
+                   dl = delay[start+i];
                    col = current - dl;
                    if(col < 0)
                    {
