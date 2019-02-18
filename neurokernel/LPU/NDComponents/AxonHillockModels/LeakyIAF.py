@@ -1,4 +1,3 @@
-
 from collections import OrderedDict
 
 import numpy as np
@@ -92,7 +91,6 @@ __global__ void update(int num_comps, %(dt)s dt, int nsteps,
 {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int total_threads = gridDim.x * blockDim.x;
-
     %(V)s V;
     %(I)s I;
     %(spike_state)s spike;
@@ -102,7 +100,6 @@ __global__ void update(int num_comps, %(dt)s dt, int nsteps,
     %(capacitance)s capacitance;
     %(resistance)s resistance;
     %(dt)s bh;
-
     for(int i = tid; i < num_comps; i += total_threads)
     {
         V = g_internalV[i];
@@ -112,17 +109,14 @@ __global__ void update(int num_comps, %(dt)s dt, int nsteps,
         threshold = g_threshold[i];
         resistance = g_resistance[i];
         reset_potential = g_reset_potential[i];
-
         bh = exp%(fletter)s(-dt/(capacitance*resistance));
         V = V*bh + (resistance*I+resting_potential)*(1.0 - bh);
-
         spike = 0;
         if (V >= threshold)
         {
             V = reset_potential;
             spike = 1;
         }
-
         g_V[i] = V;
         g_internalV[i] = V;
         g_spike_state[i] = spike;
@@ -168,7 +162,7 @@ if __name__ == '__main__':
     parser.add_argument('--debug', default=False,
                         dest='debug', action='store_true',
                         help='Write connectivity structures and inter-LPU routed data in debug folder')
-    parser.add_argument('-l', '--log', default='none', type=str,
+    parser.add_argument('-l', '--log', default='both', type=str,
                         help='Log output to screen [file, screen, both, or none; default:none]')
     parser.add_argument('-s', '--steps', default=steps, type=int,
                         help='Number of steps [default: %s]' % steps)
@@ -192,14 +186,15 @@ if __name__ == '__main__':
                'class': 'LeakyIAF',
                'name': 'LeakyIAF',
                'resting_potential': -70.0,
+               'reset_potential': -70.0,
                'threshold': -45.0,
-               'capacitance': 0.07, # in mS
-               'resistance': 0.2, # in Ohm
+               'capacitance': 2.0, # in mS
+               'resistance': 10.0, # in Ohm
                })
 
     comp_dict, conns = LPU.graph_to_dicts(G)
 
-    fl_input_processor = StepInputProcessor('I', ['neuron0'], 40, 0.2, 0.8)
+    fl_input_processor = StepInputProcessor('I', ['neuron0'], 10.0, 0.2, 0.8)
     fl_output_processor = FileOutputProcessor([('spike_state', None),('V', None)], 'new_output.h5', sample_interval=1)
 
     man.add(LPU, 'ge', dt, comp_dict, conns,
@@ -209,3 +204,18 @@ if __name__ == '__main__':
     man.spawn()
     man.start(steps=args.steps)
     man.wait()
+
+    import h5py
+    import matplotlib
+    matplotlib.use('PS')
+    import matplotlib.pyplot as plt
+
+    f = h5py.File('new_output.h5')
+    t = np.arange(0, args.steps)*dt
+
+    plt.figure()
+    plt.plot(t,f['V'].values()[0])
+    plt.xlabel('time, [s]')
+    plt.ylabel('Voltage, [mV]')
+    plt.title('Leaky Integrate-and-Fire Neuron')
+    plt.savefig('lif.png',dpi=300)
