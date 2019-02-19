@@ -8,7 +8,7 @@ from pycuda.tools import dtype_to_ctype
 import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
-from .BaseSynapseModel import BaseSynapseModel
+from neurokernel.NDComponents.SynapseModels.BaseSynapseModel import BaseSynapseModel
 
 #This class assumes a single pre synaptic connection per component instance
 class PowerGPotGPot(BaseSynapseModel):

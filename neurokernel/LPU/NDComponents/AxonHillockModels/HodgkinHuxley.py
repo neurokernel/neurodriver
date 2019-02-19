@@ -8,7 +8,7 @@ from pycuda.tools import dtype_to_ctype
 import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
-from .BaseAxonHillockModel import BaseAxonHillockModel
+from neurokernel.NDComponents.AxonHillockModels.BaseAxonHillockModel import BaseAxonHillockModel
 
 class HodgkinHuxley(BaseAxonHillockModel):
     updates = ['spike_state', 'V']
@@ -239,7 +239,7 @@ if __name__ == '__main__':
     t = np.arange(0, args.steps)*dt
 
     plt.figure()
-    plt.plot(t,f['V'].values()[0])
+    plt.plot(t,list(f['V'].values())[0])
     plt.xlabel('time, [s]')
     plt.ylabel('Voltage, [mV]')
     plt.title('Hodgkin-Huxley Neuron')

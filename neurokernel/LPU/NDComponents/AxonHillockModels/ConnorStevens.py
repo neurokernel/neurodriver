@@ -8,7 +8,7 @@ from pycuda.tools import dtype_to_ctype
 import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
-from .BaseAxonHillockModel import BaseAxonHillockModel
+from neurokernel.NDComponents.AxonHillockModels.BaseAxonHillockModel import BaseAxonHillockModel
 
 class ConnorStevens(BaseAxonHillockModel):
     updates = ['spike_state', 'V']
