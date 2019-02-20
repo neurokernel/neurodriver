@@ -8,7 +8,7 @@ from pycuda.tools import dtype_to_ctype
 import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
-from neurokernel.NDComponents.MembraneModels.BaseMembraneModel import BaseMembraneModel
+from neurokernel.LPU.NDComponents.MembraneModels.BaseMembraneModel import BaseMembraneModel
 
 class MorrisLecar(BaseMembraneModel):
     params = ['V1', 'V2', 'V3', 'V4', 'phi', 'offset',

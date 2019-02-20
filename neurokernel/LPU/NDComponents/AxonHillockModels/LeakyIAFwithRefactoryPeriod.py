@@ -8,7 +8,7 @@ import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
 from neurokernel.LPU.utils.simpleio import *
-from neurokernel.NDComponents.AxonHillockModels.BaseAxonHillockModel import BaseAxonHillockModel
+from neurokernel.LPU.NDComponents.AxonHillockModels.BaseAxonHillockModel import BaseAxonHillockModel
 
 class LeakyIAFwithRefactoryPeriod(BaseAxonHillockModel):
     updates = ['spike_state', 'V']
