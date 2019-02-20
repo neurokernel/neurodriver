@@ -215,7 +215,7 @@ if __name__ == '__main__':
     parser.add_argument('--debug', default=False,
                         dest='debug', action='store_true',
                         help='Write connectivity structures and inter-LPU routed data in debug folder')
-    parser.add_argument('-l', '--log', default='none', type=str,
+    parser.add_argument('-l', '--log', default='both', type=str,
                         help='Log output to screen [file, screen, both, or none; default:none]')
     parser.add_argument('-s', '--steps', default=steps, type=int,
                         help='Number of steps [default: %s]' % steps)
@@ -233,7 +233,7 @@ if __name__ == '__main__':
 
     t = np.arange(0, dt * steps, dt)
 
-    uids = np.array(["synapse0"])
+    uids = np.array(["synapse0"], dtype='S')
 
     spike_state = np.zeros((steps, 1), dtype=np.int32)
     spike_state[np.nonzero(t - np.round(t / 0.04) * 0.04 == 0)[0]] = 1
