@@ -55,13 +55,13 @@ class AlphaSynapse(BaseSynapseModel):
                     k, dtype=self.access_buffers[k].dtype)
 
         dtypes = {'dt': self.dtype}
-        dtypes.update({'input_{}'.format(k): self.inputs[
+        dtypes.update({k.format(k): self.inputs[
                       k].dtype for k in self.accesses})
-        dtypes.update({'param_{}'.format(k): self.params_dict[
+        dtypes.update({k: self.params_dict[
                       k].dtype for k in self.params})
-        dtypes.update({'internal_{}'.format(k): self.internal_states[
+        dtypes.update({k: self.internal_states[
                       k].dtype for k in self.internals})
-        dtypes.update({'update_{}'.format(k): self.dtype if not k ==
+        dtypes.update({k: self.dtype if not k ==
                        'spike_state' else np.int32 for k in self.updates})
         self.update_func = self.get_update_func(dtypes)
 
