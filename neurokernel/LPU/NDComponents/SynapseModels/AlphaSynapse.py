@@ -189,7 +189,7 @@ __global__ void update(int num_comps, %(dt)s dt, int steps,
             'i' + np.dtype(dtypes['dt']).char + 'i' + 'P' * (len(type_dict) - 2))
         func.block = (256, 1, 1)
         func.grid = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
-                         (self.num_comps - 1) / 256 + 1), 1)
+                         (self.num_comps - 1) // 256 + 1), 1)
         return func
 
 
