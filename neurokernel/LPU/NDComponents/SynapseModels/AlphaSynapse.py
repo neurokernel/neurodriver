@@ -207,7 +207,7 @@ if __name__ == '__main__':
     from neurokernel.LPU.OutputProcessors.FileOutputProcessor import FileOutputProcessor
     import neurokernel.mpi_relaunch
 
-    dt = 1e-6
+    dt = 1e-4
     dur = 1.0
     steps = int(dur / dt)
 
@@ -236,7 +236,7 @@ if __name__ == '__main__':
     uids = np.array(["synapse0"], dtype='S')
 
     spike_state = np.zeros((steps, 1), dtype=np.int32)
-    spike_state[np.nonzero(t - np.round(t / 0.04) * 0.04 == 0)[0]] = 1
+    spike_state[np.nonzero((t - np.round(t / 0.04) * 0.04) == 0)[0]] = 1
 
     with h5py.File('input_spike.h5', 'w') as f:
         f.create_dataset('spike_state/uids', data=uids)
