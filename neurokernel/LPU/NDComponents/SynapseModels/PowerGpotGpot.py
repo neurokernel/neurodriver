@@ -26,8 +26,8 @@ class PowerGPotGPot(BaseSynapseModel):
 
         self.debug = debug
         self.dt = dt
-        self.num_comps = params_dict['threshold'].size
-        self.dtype = params_dict['threshold'].dtype
+        self.num_comps = params_dict[params[0]].size
+        self.dtype = params_dict[params[0]].dtype
         self.LPU_id = LPU_id
         self.nsteps = 1
         self.ddt = dt/self.nsteps
@@ -71,7 +71,7 @@ class PowerGPotGPot(BaseSynapseModel):
 
     def get_update_template(self):
         template = """
-__global__ void PowerGPotGPot(int num_comps, %(dt)s dt, int steps,
+__global__ void update(int num_comps, %(dt)s dt, int steps,
                        %(V)s* g_V, %(threshold)s* g_threshold,
                        %(slope)s* g_slope, %(power)s* g_power,
                        %(saturation)s* g_saturation,
@@ -103,10 +103,10 @@ __global__ void PowerGPotGPot(int num_comps, %(dt)s dt, int steps,
 
     def get_update_func(self, dtypes):
         type_dict = {k: dtype_to_ctype(dtypes[k]) for k in dtypes}
-        type_dict.update({'fletter': 'f' if type_dict['threshold'] == 'float' else ''})
+        type_dict.update({'fletter': 'f' if type_dict[params[0]] == 'float' else ''})
         mod = SourceModule(self.get_update_template() % type_dict,
                            options=self.compile_options)
-        func = mod.get_function("PowerGPotGPot")
+        func = mod.get_function("update")
         func.prepare('i'+np.dtype(dtypes['dt']).char+'i'+'P'*(len(type_dict)-2))
         func.block = (256,1,1)
         func.grid = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
