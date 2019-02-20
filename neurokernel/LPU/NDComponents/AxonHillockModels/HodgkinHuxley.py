@@ -11,10 +11,15 @@ from pycuda.compiler import SourceModule
 from neurokernel.LPU.NDComponents.AxonHillockModels.BaseAxonHillockModel import BaseAxonHillockModel
 
 class HodgkinHuxley(BaseAxonHillockModel):
-    updates = ['spike_state', 'V']
-    accesses = ['I']
-    params = ['n','m','h']
-    internals = OrderedDict([('internalV',-65.)])
+    updates = ['spike_state', # (bool)
+               'V' # Membrane Potential (mV)
+              ]
+    accesses = ['I'] # Current (\mu A/cm^2)
+    params = ['n', # state variable for activation of K channel ([0-1] unitless)
+              'm', # state variable for activation of Na channel ([0-1] unitless)
+              'h'  # state variable for inactivation of Na channel ([0-1] unitless)
+              ]
+    internals = OrderedDict([('internalV',-65.)]) # Membrane Potential (mV)
 
     def __init__(self, params_dict, access_buffers, dt,
                  debug=False, LPU_id=None, cuda_verbose=True):

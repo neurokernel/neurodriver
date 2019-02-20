@@ -11,12 +11,22 @@ from neurokernel.LPU.utils.simpleio import *
 from neurokernel.LPU.NDComponents.AxonHillockModels.BaseAxonHillockModel import BaseAxonHillockModel
 
 class LeakyIAFwithRefactoryPeriod(BaseAxonHillockModel):
-    updates = ['spike_state', 'V']
-    accesses = ['I']
-    params = ['resting_potential', 'threshold', 'reset_voltage',
-              'capacitance', 'refractory_period', 'time_constant',
-              'bias_current']
-    internals = OrderedDict([('refractory_time_left', 0.0)])
+    updates = ['spike_state', # (bool)
+               'V' # Membrane Potential (mV)
+              ]
+    accesses = ['I'] # (\mu A/cm^2 )
+    params = ['resting_potential', # (mV)
+              'threshold', # Firing Threshold (mV)
+              'reset_potential', # Potential to be reset to after a spike (mV)
+              'capacitance', # (\mu F/cm^2)
+              'resistance', # (k\Omega cm.^2)
+              'refractory_period', # (ms)
+              'time_constant', # (ms)
+              'bias_current' # (\mu A/cm^2)
+              ]
+    internals = OrderedDict([('internalV', 0.0), # Membrane Potential (mV)
+                             ('refractory_time_left', 0.0) # (ms)
+                            ])
 
     def __init__(self, params_dict, access_buffers, dt,
                  debug=False, LPU_id=None, cuda_verbose=False):
@@ -77,6 +87,7 @@ __global__ void update(int num_comps, %(dt)s dt,
                %(refractory_period)s* g_refractory_period,
                %(time_constant)s* g_time_constant,
                %(bias_current)s* g_bias_current,
+               %(internalV)s* g_internalV,
                %(refractory_time_left)s* g_refractory_time_left,
                %(spike_state)s* g_spike_state, %(V)s* g_V)
 {
@@ -99,7 +110,7 @@ __global__ void update(int num_comps, %(dt)s dt,
     {
         refractory_time_left = fmax%(fletter)s(g_refractory_time_left[i] - dt, 0);
 
-        V = g_V[i];
+        V = g_internalV[i];
         I = g_I[i];
         time_constant = g_time_constant[i];
         capacitance = g_capacitance[i];
@@ -120,6 +131,7 @@ __global__ void update(int num_comps, %(dt)s dt,
         }
 
         g_V[i] = V;
+        g_internalV[i] = V;
         g_spike_state[i] = spike;
         g_refractory_time_left[i] = refractory_time_left;
 
@@ -185,8 +197,8 @@ if __name__ == '__main__':
     G = nx.MultiDiGraph()
 
     G.add_node('neuron0', **{
-               'class': 'LIF',
-               'name': 'LIF',
+               'class': 'LeakyIAFwithRefactoryPeriod',
+               'name': 'LeakyIAFwithRefactoryPeriod',
                'resting_potential': -70.0,
                'threshold': -45.0,
                'reset_voltage': -55.0,

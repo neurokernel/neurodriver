@@ -11,10 +11,20 @@ from pycuda.compiler import SourceModule
 from neurokernel.LPU.NDComponents.AxonHillockModels.BaseAxonHillockModel import BaseAxonHillockModel
 
 class ConnorStevens(BaseAxonHillockModel):
-    updates = ['spike_state', 'V']
-    accesses = ['I']
-    params = ['n','m','h','a','b']
-    internals = OrderedDict([('internalV',-65.),('internalVprev1',-65.),('internalVprev2',-65.)])
+    updates = ['spike_state', # (bool)
+               'V' # Membrane Potential (mV)
+              ]
+    accesses = ['I'] # (\mu A/cm^2 )
+    params = ['n', # state variable for activation of K channel ([0-1] unitless)
+              'm', # state variable for activation of Na channel ([0-1] unitless)
+              'h', # state variable for inactivation of Na channel ([0-1] unitless)
+              'a', # state variable for activation of A channel ([0-1] unitless)
+              'b' # state variable for inactivation of A channel ([0-1] unitless)
+              ]
+    internals = OrderedDict([('internalV',-65.), # Membrane Potential (mV)
+                             ('internalVprev1',-65.), # Membrane Potential (mV)
+                             ('internalVprev2',-65.) # Membrane Potential (mV)
+                            ])
 
     def __init__(self, params_dict, access_buffers, dt,
                  debug=False, LPU_id=None, cuda_verbose=True):
