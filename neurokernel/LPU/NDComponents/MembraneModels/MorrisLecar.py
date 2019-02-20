@@ -22,14 +22,14 @@ class MorrisLecar(BaseMembraneModel):
         else:
             self.compile_options = []
 
-        self.num_comps = params_dict['V1'].size
+        self.num_comps = params_dict[self.params[0]].size
         self.params_dict = params_dict
         self.access_buffers = access_buffers
         self.dt = np.double(dt)
         self.steps = max(int(round(dt / 1e-5)), 1)
         self.debug = debug
         self.LPU_id = LPU_id
-        self.dtype = params_dict['V1'].dtype
+        self.dtype = params_dict[self.params[0]].dtype
         self.ddt = dt / self.steps
 
         self.internal_states = {
@@ -155,7 +155,7 @@ morris_lecar_multiple(int num_comps, %(dt)s dt, int nsteps,
 
     def get_update_func(self, dtypes):
         type_dict = {k: dtype_to_ctype(dtypes[k]) for k in dtypes}
-        type_dict.update({'fletter': 'f' if type_dict['V1'] == 'float' else ''})
+        type_dict.update({'fletter': 'f' if type_dict[self.params[0]] == 'float' else ''})
         mod = SourceModule(self.get_update_template() % type_dict,
                            options=self.compile_options)
         func = mod.get_function("morris_lecar_multiple")

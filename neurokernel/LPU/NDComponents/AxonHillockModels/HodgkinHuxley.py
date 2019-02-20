@@ -28,13 +28,13 @@ class HodgkinHuxley(BaseAxonHillockModel):
         else:
             self.compile_options = []
 
-        self.num_comps = params_dict['n'].size
+        self.num_comps = params_dict[self.params[0]].size
         self.params_dict = params_dict
         self.access_buffers = access_buffers
 
         self.debug = debug
         self.LPU_id = LPU_id
-        self.dtype = params_dict['n'].dtype
+        self.dtype = params_dict[self.params[0]].dtype
 
         self.dt = np.double(dt)
         self.ddt = np.double(1e-6)
@@ -159,7 +159,7 @@ __global__ void update(
 
     def get_update_func(self, dtypes):
         type_dict = {k: dtype_to_ctype(dtypes[k]) for k in dtypes}
-        type_dict.update({'fletter': 'f' if type_dict['n'] == 'float' else ''})
+        type_dict.update({'fletter': 'f' if type_dict[self.params[0]] == 'float' else ''})
         mod = SourceModule(self.get_update_template() % type_dict,
                            options=self.compile_options)
         func = mod.get_function("update")

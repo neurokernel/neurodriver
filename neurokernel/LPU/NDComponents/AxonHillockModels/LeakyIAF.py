@@ -36,14 +36,14 @@ class LeakyIAF(BaseAxonHillockModel):
         else:
             self.compile_options = []
 
-        self.num_comps = params_dict[params[0]].size #
+        self.num_comps = params_dict[self.params[0]].size #
         self.params_dict = params_dict
         self.access_buffers = access_buffers
         self.dt = np.double(dt)
         self.steps = 1
         self.debug = debug
         self.LPU_id = LPU_id
-        self.dtype = params_dict[params[0]].dtype
+        self.dtype = params_dict[self.params[0]].dtype
         self.ddt = self.dt/self.steps
 
         self.internal_states = {
@@ -168,7 +168,7 @@ __global__ void update(int num_comps,
     def get_update_func(self, dtypes):
         # no need to change
         type_dict = {k: dtype_to_ctype(dtypes[k]) for k in dtypes}
-        type_dict.update({'fletter': 'f' if type_dict[params[0]] == 'float' else ''})
+        type_dict.update({'fletter': 'f' if type_dict[self.params[0]] == 'float' else ''})
         mod = SourceModule(self.get_update_template() % type_dict,
                            options=self.compile_options)
         func = mod.get_function("update")

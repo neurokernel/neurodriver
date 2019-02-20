@@ -31,8 +31,8 @@ class AlphaSynapse(BaseSynapseModel):
 
         self.debug = debug
         self.dt = dt
-        self.num_comps = params_dict[params[0]].size
-        self.dtype = params_dict[params[0]].dtype
+        self.num_comps = params_dict[self.params[0]].size
+        self.dtype = params_dict[self.params[0]].dtype
         self.LPU_id = LPU_id
         self.nsteps = 1
         self.ddt = dt / self.nsteps
@@ -181,7 +181,7 @@ __global__ void update(int num_comps, %(dt)s dt, int steps,
 
     def get_update_func(self, dtypes):
         type_dict = {k: dtype_to_ctype(dtypes[k]) for k in dtypes}
-        type_dict.update({'fletter': 'f' if type_dict[params[0]] == 'float' else ''})
+        type_dict.update({'fletter': 'f' if type_dict[self.params[0]] == 'float' else ''})
         mod = SourceModule(self.get_update_template() % type_dict,
                            options=self.compile_options)
         func = mod.get_function("update")
