@@ -84,7 +84,7 @@ class AlphaSynapse(BaseSynapseModel):
         if self.nsteps == 1:
             # this is a kernel that runs 1 step internally for each self.dt
             template = """
-__global__ void alpha_synapse(int num_comps, %(dt)s dt, int steps,
+__global__ void update(int num_comps, %(dt)s dt, int steps,
                        %(spike_state)s* g_spike_state,
                        %(gmax)s* g_gmax, %(ar)s* g_ar,
                        %(ad)s* g_ad,
