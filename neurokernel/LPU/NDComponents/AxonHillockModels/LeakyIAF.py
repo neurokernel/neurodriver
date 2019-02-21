@@ -62,6 +62,7 @@ __global__ void update(int num_comps,
     int total_threads = gridDim.x * blockDim.x;
 
     // instantiate variables
+    %(dt)s ddt = dt*1000.; // s to ms
     %(V)s V;
     %(I)s I;
     %(spike_state)s spike;
@@ -71,7 +72,7 @@ __global__ void update(int num_comps,
     %(capacitance)s capacitance;
     %(resistance)s resistance;
     %(dt)s bh;
-
+    
     // no need to change this for loop
     for(int i = tid; i < num_comps; i += total_threads)
     {
@@ -85,13 +86,17 @@ __global__ void update(int num_comps,
         reset_potential = g_reset_potential[i];
 
         // update according to equations of the model
-        bh = exp%(fletter)s(-dt/(capacitance*resistance));
-        V = V*bh + (resistance*I+resting_potential)*(1.0 - bh);
-        spike = 0;
-        if (V >= threshold)
+        bh = exp%(fletter)s(-ddt/(capacitance*resistance));
+        
+        for (int j = 0; j < nsteps; ++j)
         {
-            V = reset_potential;
-            spike = 1;
+            V = V*bh + (resistance*I+resting_potential)*(1.0 - bh);
+            spike = 0;
+            if (V >= threshold)
+            {
+                V = reset_potential;
+                spike = 1;
+            }
         }
 
         // write local updated states back to global memory

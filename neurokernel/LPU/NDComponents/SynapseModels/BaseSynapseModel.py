@@ -120,7 +120,7 @@ __global__ void retrieve(%(type)s* buffer, int buffer_ld, int current,
 
         self.update_func.prepared_async_call(
             self.update_func.grid, self.update_func.block, st,
-            self.num_comps, self.ddt*1000, self.nsteps,
+            self.num_comps, self.ddt, self.nsteps,
             *[self.inputs[k].gpudata for k in self.accesses]+\
             [self.params_dict[k].gpudata for k in self.params]+\
             [self.internal_states[k].gpudata for k in self.internals]+\

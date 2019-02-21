@@ -18,6 +18,7 @@ __global__ void update(int num_comps, %(dt)s dt, int steps,
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int total_threads = gridDim.x * blockDim.x;
 
+    %(dt)s ddt = dt*1000.; // s to ms
     %(V)s V;
     %(threshold)s threshold;
     %(slope)s slope;

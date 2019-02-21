@@ -70,14 +70,18 @@ __global__ void update(int num_comps, %(dt)s dt, int nsteps,
         bias_current = g_bias_current[i];
 
         bh = exp%(fletter)s(-ddt/time_constant);
-        V = V*bh + ((refractory_time_left == 0 ? time_constant/capacitance*(I+bias_current) : 0) + resting_potential) * (1.0 - bh);
 
-        spike = 0;
-        if (V >= threshold)
+        for (int j = 0; j < nsteps; ++j)
         {
-            V = reset_potential;
-            spike = 1;
-            refractory_time_left += g_refractory_period[i];
+            V = V*bh + ((refractory_time_left == 0 ? time_constant/capacitance*(I+bias_current) : 0) + resting_potential) * (1.0 - bh);
+
+            spike = 0;
+            if (V >= threshold)
+            {
+                V = reset_potential;
+                spike = 1;
+                refractory_time_left += g_refractory_period[i];
+            }
         }
 
         g_V[i] = V;
