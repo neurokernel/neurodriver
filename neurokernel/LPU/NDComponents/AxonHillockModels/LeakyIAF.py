@@ -1,13 +1,4 @@
-from collections import OrderedDict
-
-import numpy as np
-
-import pycuda.gpuarray as garray
-from pycuda.tools import dtype_to_ctype
-import pycuda.driver as cuda
-from pycuda.compiler import SourceModule
-
-from neurokernel.LPU.NDComponents.AxonHillockModels.BaseAxonHillockModel import BaseAxonHillockModel
+from neurokernel.LPU.NDComponents.AxonHillockModels.BaseAxonHillockModel import *
 
 class LeakyIAF(BaseAxonHillockModel):
     # updates are the output states of the model
@@ -28,38 +19,6 @@ class LeakyIAF(BaseAxonHillockModel):
     # and are ordered dict whose keys are the variables and value are the initial values.
     internals = OrderedDict([('internalV', 0.0)]) # Membrane Potential (mV)
 
-    def __init__(self, params_dict, access_buffers, dt,
-                 debug=False, LPU_id=None, cuda_verbose=False):
-        # no need to change
-        if cuda_verbose:
-            self.compile_options = ['--ptxas-options=-v']
-        else:
-            self.compile_options = []
-
-        self.num_comps = params_dict[self.params[0]].size #
-        self.params_dict = params_dict
-        self.access_buffers = access_buffers
-        self.dt = np.double(dt)
-        self.steps = 1
-        self.debug = debug
-        self.LPU_id = LPU_id
-        self.dtype = params_dict[self.params[0]].dtype
-        self.ddt = self.dt/self.steps
-
-        self.internal_states = {
-            c: garray.zeros(self.num_comps, dtype = self.dtype)+self.internals[c] \
-            for c in self.internals}
-
-        self.inputs = {
-            k: garray.empty(self.num_comps, dtype = self.access_buffers[k].dtype)\
-            for k in self.accesses}
-
-        dtypes = {'dt': self.dtype}
-        dtypes.update({k: self.inputs[k].dtype for k in self.accesses})
-        dtypes.update({k: self.params_dict[k].dtype for k in self.params})
-        dtypes.update({k: self.internal_states[k].dtype for k in self.internals})
-        dtypes.update({k: self.dtype if not k == 'spike_state' else np.int32 for k in self.updates})
-        self.update_func = self.get_update_func(dtypes)
 
     def pre_run(self, update_pointers):
         # copy initial value for Voltage in update and Voltage in internal state
@@ -68,33 +27,12 @@ class LeakyIAF(BaseAxonHillockModel):
         # if 'initV' is specified in the parameter dict,
         # it will be used as initial value
         if 'initV' in self.params_dict:
-            cuda.memcpy_dtod(int(update_pointers['V']),
-                             self.params_dict['initV'].gpudata,
-                             self.params_dict['initV'].nbytes)
-            cuda.memcpy_dtod(self.internal_states['internalV'].gpudata,
-                             self.params_dict['initV'].gpudata,
-                             self.params_dict['initV'].nbytes)
+            self.add_initializer('initV', 'V', update_pointers)
+            self.add_initializer('initV', 'internalV', update_pointers)
         else:
             # use resting potential as initial value
-            cuda.memcpy_dtod(int(update_pointers['V']),
-                             self.params_dict['resting_potential'].gpudata,
-                             self.params_dict['resting_potential'].nbytes)
-            cuda.memcpy_dtod(self.internal_states['internalV'].gpudata,
-                             self.params_dict['resting_potential'].gpudata,
-                             self.params_dict['resting_potential'].nbytes)
-
-    def run_step(self, update_pointers, st=None):
-        # no need to change
-        for k in self.inputs:
-            self.sum_in_variable(k, self.inputs[k], st=st)
-
-        self.update_func.prepared_async_call(
-            self.update_func.grid, self.update_func.block, st,
-            self.num_comps, self.ddt*1000, self.steps,
-            *[self.inputs[k].gpudata for k in self.accesses]+\
-            [self.params_dict[k].gpudata for k in self.params]+\
-            [self.internal_states[k].gpudata for k in self.internals]+\
-            [update_pointers[k] for k in self.updates])
+            self.add_initializer('resting_potential', 'V', update_pointers)
+            self.add_initializer('resting_potential', 'internalV', update_pointers)
 
     def get_update_template(self):
         # need to update the CUDA kernel to reflect the equations of the model
@@ -165,19 +103,6 @@ __global__ void update(int num_comps,
         """
         return template
 
-    def get_update_func(self, dtypes):
-        # no need to change
-        type_dict = {k: dtype_to_ctype(dtypes[k]) for k in dtypes}
-        type_dict.update({'fletter': 'f' if type_dict[self.params[0]] == 'float' else ''})
-        mod = SourceModule(self.get_update_template() % type_dict,
-                           options=self.compile_options)
-        func = mod.get_function("update")
-        func.prepare('i'+np.dtype(dtypes['dt']).char+'i'+'P'*(len(type_dict)-2))
-        func.block = (256,1,1)
-        func.grid = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
-                         (self.num_comps-1) // 256 + 1), 1)
-        return func
-
 
 
 if __name__ == '__main__':
@@ -203,7 +128,7 @@ if __name__ == '__main__':
     parser.add_argument('--debug', default=False,
                         dest='debug', action='store_true',
                         help='Write connectivity structures and inter-LPU routed data in debug folder')
-    parser.add_argument('-l', '--log', default='both', type=str,
+    parser.add_argument('-l', '--log', default='none', type=str,
                         help='Log output to screen [file, screen, both, or none; default:none]')
     parser.add_argument('-s', '--steps', default=steps, type=int,
                         help='Number of steps [default: %s]' % steps)
