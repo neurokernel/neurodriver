@@ -58,8 +58,8 @@ __global__ void update(int num_comps, %(dt)s dt, int nsteps,
 
     for(int i = tid; i < num_comps; i += total_threads)
     {
+        spike = 0;
         refractory_time_left = fmax%(fletter)s(g_refractory_time_left[i] - ddt, 0);
-
         V = g_internalV[i];
         I = g_I[i];
         time_constant = g_time_constant[i];
@@ -75,7 +75,7 @@ __global__ void update(int num_comps, %(dt)s dt, int nsteps,
         {
             V = V*bh + ((refractory_time_left == 0 ? time_constant/capacitance*(I+bias_current) : 0) + resting_potential) * (1.0 - bh);
 
-            spike = 0;
+            
             if (V >= threshold)
             {
                 V = reset_potential;

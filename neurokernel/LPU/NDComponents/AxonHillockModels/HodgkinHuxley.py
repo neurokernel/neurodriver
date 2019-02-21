@@ -1,6 +1,6 @@
 from neurokernel.LPU.NDComponents.AxonHillockModels.BaseAxonHillockModel import *
 
-class HodgkinHuxleySimple(BaseAxonHillockModel):
+class HodgkinHuxley(BaseAxonHillockModel):
     updates = ['spike_state', # (bool)
                'V' # Membrane Potential (mV)
               ]
@@ -9,7 +9,9 @@ class HodgkinHuxleySimple(BaseAxonHillockModel):
               'm', # state variable for activation of Na channel ([0-1] unitless)
               'h'  # state variable for inactivation of Na channel ([0-1] unitless)
               ]
-    internals = OrderedDict([('internalV',-65.)]) # Membrane Potential (mV)
+    internals = OrderedDict([('internalV',-65.),
+                             ('internalVprev1',-65.),
+                             ('internalVprev2',-65.)]) # Membrane Potential (mV)
 
     def get_update_template(self):
         template = """
@@ -26,6 +28,8 @@ __global__ void update(
     %(m)s* g_m,
     %(h)s* g_h,
     %(internalV)s* g_internalV,
+    %(internalVprev1)s* g_internalVprev1,
+    %(internalVprev2)s* g_internalVprev2,
     %(spike_state)s* g_spike_state,
     %(V)s* g_V)
 {
@@ -46,6 +50,8 @@ __global__ void update(
     {
         spike = 0;
         V = g_internalV[i];
+        Vprev1 = g_internalVprev1[i];
+        Vprev2 = g_internalVprev2[i];
         I = g_I[i];
         n = g_n[i];
         m = g_m[i];
@@ -85,6 +91,8 @@ __global__ void update(
         g_h[i] = h;
         g_V[i] = V;
         g_internalV[i] = V;
+        g_internalVprev1[i] = Vprev1;
+        g_internalVprev2[i] = Vprev2;
         g_spike_state[i] = (spike > 0);
     }
 }

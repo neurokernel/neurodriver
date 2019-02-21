@@ -77,6 +77,7 @@ __global__ void update(int num_comps,
     for(int i = tid; i < num_comps; i += total_threads)
     {
         // load the data from global memory
+        spike = 0;
         V = g_internalV[i];
         I = g_I[i];
         capacitance = g_capacitance[i];
@@ -88,7 +89,6 @@ __global__ void update(int num_comps,
         // update according to equations of the model
         bh = exp%(fletter)s(-ddt/(capacitance*resistance));
         
-        spike = 0;
         for (int j = 0; j < nsteps; ++j)
         {
             V = V*bh + (resistance*I+resting_potential)*(1.0 - bh);
