@@ -9,8 +9,8 @@ class HodgkinHuxley(BaseAxonHillockModel):
               'm', # state variable for activation of Na channel ([0-1] unitless)
               'h'  # state variable for inactivation of Na channel ([0-1] unitless)
               ]
-    internals = OrderedDict([('internalV',-65.),
-                             ('internalVprev1',-65.),
+    internals = OrderedDict([('internalV',-65.),       # Membrane Potential (mV)
+                             ('internalVprev1',-65.),  # Membrane Potential (mV)
                              ('internalVprev2',-65.)]) # Membrane Potential (mV)
 
     def get_update_template(self):
