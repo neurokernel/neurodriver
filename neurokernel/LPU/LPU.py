@@ -1180,7 +1180,7 @@ class LPU(Module):
                                 if k not in data[var]: data[var][k] = []
                                 data[var][k].append(self.conn_dict[uid][var][k][i])
                             l = len(pre[var])
-                            assert(all([len(data[var][k])==l for k in data[var]]))
+                            # assert(all([len(data[var][k])==l for k in data[var]]))
                     for var,c in cnt.items():
                         npre[var].append(cnt[var])
                 else:
