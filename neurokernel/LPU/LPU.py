@@ -151,7 +151,8 @@ class LPU(Module):
         return g_new
 
     @staticmethod
-    def graph_to_dicts(graph, uid_key=None, class_key='class'):
+    def graph_to_dicts(graph, uid_key=None, class_key='class',
+                       remove_edge_id = False):
         """
         Convert graph of LPU neuron/synapse data to Python data structures.
 
@@ -267,6 +268,9 @@ class LPU(Module):
 
         # Extract connections
         conns = graph.edges(data=True)
+        if remove_edge_id:
+            for pre, post, conn in conns:
+                conn.pop('id', None)
         return comp_dict, conns
 
     @staticmethod
@@ -289,7 +293,7 @@ class LPU(Module):
         """
 
         graph = nx.read_gexf(filename)
-        return LPU.graph_to_dicts(graph)
+        return LPU.graph_to_dicts(graph, remove_edge_id = True)
 
     @staticmethod
     def lpu_parser_legacy(filename):
