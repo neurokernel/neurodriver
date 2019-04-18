@@ -23,7 +23,7 @@ import numpy as np
 from scipy.interpolate import griddata
 from shutilwhich import which
 
-from . import simpleio as sio
+import neurokernel.LPU.utils.simpleio as sio
 
 class visualizer(object):
     """

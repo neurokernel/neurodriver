@@ -4,8 +4,8 @@ class AlphaSynapse(BaseSynapseModel):
     accesses = ['spike_state'] # (bool)
     updates = ['g'] # conductance (mS/cm^2)
     params = ['gmax', # maximum conductance (mS/cm^2)
-              'ar', # rise rate of conductance (ms)
-              'ad' # decay rate of conductance (ms)
+              'ar', # rise rate of conductance (1/s)
+              'ad' # decay rate of conductance (1/s)
               ]
     internals = OrderedDict([('z', 0.0),  # g,
                              ('dz', 0.0),  # derivative of g
@@ -27,7 +27,7 @@ __global__ void update(int num_comps, %(dt)s dt, int steps,
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int total_threads = gridDim.x * blockDim.x;
 
-    %(dt)s ddt = dt*1000.; // s to ms
+    //%(dt)s ddt = dt*1000.; // s to ms
     %(spike_state)s spike_state;
     %(gmax)s gmax;
     %(ar)s ar;
