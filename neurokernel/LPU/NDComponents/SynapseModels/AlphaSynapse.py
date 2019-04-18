@@ -45,8 +45,8 @@ __global__ void update(int num_comps, %(dt)s dt, int steps,
         d2z = g_d2z[i];
         spike_state = g_spike_state[i];
 
-        new_z = fmax( 0., z + ddt*dz );
-        new_dz = dz + ddt*d2z;
+        new_z = fmax( 0., z + dt*dz );
+        new_dz = dz + dt*d2z;
         if( spike_state )
             new_dz += ar*ad;
         new_d2z = -( ar+ad )*dz - ar*ad*z;
