@@ -188,11 +188,11 @@ def handle_op_node(node):
         if isinstance(node.left, ast.BinOp):
             node_left = handle_op_node(node.left)
         if isinstance(node.left, ast.Call):
-            # print(node.left.func.id)
             arguments = '(' + ','.join([handle_op_node(i) for i in node.left.args]) + ')'
             node_left = node.left.func.id + arguments
         else:
-            print(node.left)
+            print('Warning: Could not find the type of left node ', node.left,' in a BinOp. Translation might be incorrect.')
+
         if isinstance(node.right, ast.Num):
             node_right = node.right.n
         if isinstance(node.right, ast.Name):
@@ -201,9 +201,10 @@ def handle_op_node(node):
             node_right = handle_op_node(node.right)
         if isinstance(node.right, ast.Call):
             arguments = '(' + ','.join([handle_op_node(i) for i in node.right.args]) + ')'
-            node_left = node.right.func.id + arguments
+            node_right = node.right.func.id + arguments
         else:
-            print(node.right)
+            print('Warning: Could not find the type of', node.right,'. Translation might be incorrect.')
+
         return get_op(node.op, node_left, node_right)
     if isinstance(node, ast.Compare):
         return handle_op_node(node.left) + ''.join([handle_op_node(i) for i in node.ops]) + ''.join([handle_op_node(i) for i in node.comparators])
