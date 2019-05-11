@@ -19,7 +19,6 @@ class LeakyIAFwithRefactoryPeriod(BaseAxonHillockModel):
               'threshold', # Firing Threshold (mV)
               'reset_potential', # Potential to be reset to after a spike (mV)
               'capacitance', # (\mu F/cm^2)
-              'resistance', # (k\Omega cm.^2)
               'refractory_period', # (ms)
               'time_constant', # (ms)
               'bias_current' # (\mu A/cm^2)
@@ -82,7 +81,7 @@ __global__ void update(int num_comps, %(dt)s dt,
                %(I)s* g_I,
                %(resting_potential)s* g_resting_potential,
                %(threshold)s* g_threshold,
-               %(reset_voltage)s* g_reset_voltage,
+               %(reset_potential)s* g_reset_potential,
                %(capacitance)s* g_capacitance,
                %(refractory_period)s* g_refractory_period,
                %(time_constant)s* g_time_constant,
@@ -99,7 +98,7 @@ __global__ void update(int num_comps, %(dt)s dt,
     %(spike_state)s spike;
     %(resting_potential)s resting_potential;
     %(threshold)s threshold;
-    %(reset_voltage)s reset_voltage;
+    %(reset_potential)s reset_potential;
     %(capacitance)s capacitance;
     %(time_constant)s time_constant;
     %(bias_current)s bias_current;
@@ -114,7 +113,7 @@ __global__ void update(int num_comps, %(dt)s dt,
         I = g_I[i];
         time_constant = g_time_constant[i];
         capacitance = g_capacitance[i];
-        reset_voltage = g_reset_voltage[i];
+        reset_potential = g_reset_potential[i];
         resting_potential = g_resting_potential[i];
         threshold = g_threshold[i];
         bias_current = g_bias_current[i];
@@ -125,7 +124,7 @@ __global__ void update(int num_comps, %(dt)s dt,
         spike = 0;
         if (V >= threshold)
         {
-            V = reset_voltage;
+            V = reset_potential;
             spike = 1;
             refractory_time_left += g_refractory_period[i];
         }
@@ -201,7 +200,7 @@ if __name__ == '__main__':
                'name': 'LeakyIAFwithRefactoryPeriod',
                'resting_potential': -70.0,
                'threshold': -45.0,
-               'reset_voltage': -55.0,
+               'reset_potential': -55.0,
                'capacitance': 0.0744005237682, # in mS
                'refractory_period': 0.0, # in milliseconds
                'time_constant': 16.0, # in milliseconds
