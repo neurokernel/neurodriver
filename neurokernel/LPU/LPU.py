@@ -673,7 +673,7 @@ class LPU(Module):
                             self.variable_delay_map[data['variable']] if \
                             data['variable'] in self.variable_delay_map else 0)
             # connection to Aggregator will be added later
-            if not post_model == 'Aggregator':
+            if 'Aggregator' not in post_model:
                 conns.append((pre,post,data))
 
         if self.print_timing:
@@ -1154,7 +1154,7 @@ class LPU(Module):
             d['cumlen'] = np.cumsum([0]+d['len'])
             d['uids'] = {uid:i for i, uid in enumerate(d['uids'])}
             self.memory_manager.memory_alloc(var, d['cumlen'][-1], d['delay']+2,\
-                dtype=self.default_dtype if not var=='spike_state' else np.int32,
+                dtype=self.default_dtype,
                 info=d)
 
     def process_connections(self):

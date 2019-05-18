@@ -15,88 +15,88 @@ class HodgkinHuxley(BaseAxonHillockModel):
 
     def get_update_template(self):
         template = """
-#define EXP exp%(fletter)s
-#define POW pow%(fletter)s
-#define ABS fabs%(fletter)s
+        #define EXP exp%(fletter)s
+        #define POW pow%(fletter)s
+        #define ABS fabs%(fletter)s
 
-__global__ void update(
-    int num_comps,
-    %(dt)s dt,
-    int nsteps,
-    %(I)s* g_I,
-    %(n)s* g_n,
-    %(m)s* g_m,
-    %(h)s* g_h,
-    %(internalV)s* g_internalV,
-    %(internalVprev1)s* g_internalVprev1,
-    %(internalVprev2)s* g_internalVprev2,
-    %(spike_state)s* g_spike_state,
-    %(V)s* g_V)
-{
-    int tid = threadIdx.x + blockIdx.x * blockDim.x;
-    int total_threads = gridDim.x * blockDim.x;
-
-    %(dt)s ddt = dt*1000.; // s to ms
-
-    %(V)s V, Vprev1, Vprev2, dV;
-    %(I)s I;
-    %(spike_state)s spike;
-    %(n)s n, dn;
-    %(m)s m, dm;
-    %(h)s h, dh;
-    %(n)s a;
-
-    for(int i = tid; i < num_comps; i += total_threads)
-    {
-        spike = 0;
-        V = g_internalV[i];
-        Vprev1 = g_internalVprev1[i];
-        Vprev2 = g_internalVprev2[i];
-        I = g_I[i];
-        n = g_n[i];
-        m = g_m[i];
-        h = g_h[i];
-
-        for (int j = 0; j < nsteps; ++j)
+        __global__ void update(
+            int num_comps,
+            %(dt)s dt,
+            int nsteps,
+            %(I)s* g_I,
+            %(n)s* g_n,
+            %(m)s* g_m,
+            %(h)s* g_h,
+            %(internalV)s* g_internalV,
+            %(internalVprev1)s* g_internalVprev1,
+            %(internalVprev2)s* g_internalVprev2,
+            %(spike_state)s* g_spike_state,
+            %(V)s* g_V)
         {
-            a = exp(-(V+55)/10)-1;
-            if (ABS(a) <= 1e-7)
-                dn = (1.-n) * 0.1 - n * (0.125*EXP(-(V+65.)/80.));
-            else
-                dn = (1.-n) * (-0.01*(V+55.)/a) - n * (0.125*EXP(-(V+65)/80));
+            int tid = threadIdx.x + blockIdx.x * blockDim.x;
+            int total_threads = gridDim.x * blockDim.x;
 
-            a = exp(-(V+40.)/10.)-1.;
-            if (ABS(a) <= 1e-7)
-                dm = (1.-m) - m*(4*EXP(-(V+65)/18));
-            else
-                dm = (1.-m) * (-0.1*(V+40.)/a) - m * (4.*EXP(-(V+65.)/18.));
+            %(dt)s ddt = dt*1000.; // s to ms
 
-            dh = (1.-h) * (0.07*EXP(-(V+65.)/20.)) - h / (EXP(-(V+35.)/10.)+1.);
+            %(V)s V, Vprev1, Vprev2, dV;
+            %(I)s I;
+            %(spike_state)s spike;
+            %(n)s n, dn;
+            %(m)s m, dm;
+            %(h)s h, dh;
+            %(n)s a;
 
-            dV = I - 120.*POW(m,3)*h*(V-50.) - 36. * POW(n,4) * (V+77.) - 0.3 * (V+54.387);
+            for(int i = tid; i < num_comps; i += total_threads)
+            {
+                spike = 0.0;
+                V = g_internalV[i];
+                Vprev1 = g_internalVprev1[i];
+                Vprev2 = g_internalVprev2[i];
+                I = g_I[i];
+                n = g_n[i];
+                m = g_m[i];
+                h = g_h[i];
 
-            n += ddt * dn;
-            m += ddt * dm;
-            h += ddt * dh;
-            V += ddt * dV;
+                for (int j = 0; j < nsteps; ++j)
+                {
+                    a = exp(-(V+55)/10)-1;
+                    if (ABS(a) <= 1e-7)
+                        dn = (1.-n) * 0.1 - n * (0.125*EXP(-(V+65.)/80.));
+                    else
+                        dn = (1.-n) * (-0.01*(V+55.)/a) - n * (0.125*EXP(-(V+65)/80));
 
-            spike += (Vprev2<=Vprev1) && (Vprev1 >= V) && (Vprev1 > -30);
+                    a = exp(-(V+40.)/10.)-1.;
+                    if (ABS(a) <= 1e-7)
+                        dm = (1.-m) - m*(4*EXP(-(V+65)/18));
+                    else
+                        dm = (1.-m) * (-0.1*(V+40.)/a) - m * (4.*EXP(-(V+65.)/18.));
 
-            Vprev2 = Vprev1;
-            Vprev1 = V;
+                    dh = (1.-h) * (0.07*EXP(-(V+65.)/20.)) - h / (EXP(-(V+35.)/10.)+1.);
+
+                    dV = I - 120.*POW(m,3)*h*(V-50.) - 36. * POW(n,4) * (V+77.) - 0.3 * (V+54.387);
+
+                    n += ddt * dn;
+                    m += ddt * dm;
+                    h += ddt * dh;
+                    V += ddt * dV;
+
+                    spike += (Vprev2<=Vprev1) && (Vprev1 >= V) && (Vprev1 > -30);
+
+                    Vprev2 = Vprev1;
+                    Vprev1 = V;
+                }
+
+                g_n[i] = n;
+                g_m[i] = m;
+                g_h[i] = h;
+                g_V[i] = V;
+                g_internalV[i] = V;
+                g_internalVprev1[i] = Vprev1;
+                g_internalVprev2[i] = Vprev2;
+                g_spike_state[i] = fmin(spike, 1.0);
+            }
         }
-
-        g_n[i] = n;
-        g_m[i] = m;
-        g_h[i] = h;
-        g_V[i] = V;
-        g_internalV[i] = V;
-        g_internalVprev1[i] = Vprev1;
-        g_internalVprev2[i] = Vprev2;
-        g_spike_state[i] = (spike > 0);
-    }
-}
-"""
+        """
         return template
 
 
