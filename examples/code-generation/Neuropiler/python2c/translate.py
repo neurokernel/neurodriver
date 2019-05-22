@@ -63,7 +63,8 @@ def includes_from_code(code):
 def main_function(updates = ['spike_state', 'V'],
                   accesses = ['I'],
                   params = ['resting_potential', 'threshold', 'reset_potential', 'capacitance', 'resistance'],
-                  internals = OrderedDict([('internalV',0.0)])):
+                  internals = OrderedDict([('internalV',0.0)]),
+                  localvars = []):
     """
     Return a standard main function block for given Neurodriver variables.
     """
@@ -91,6 +92,8 @@ def main_function(updates = ['spike_state', 'V'],
     for i in updates:
         arg_blocks.append(blocks.ExprBlock("\n%(" + i + ")s", "g_" + i, pointer_depth=1, is_arg=True))
         template_blocks.append(blocks.StringBlock("%(" + i + ")s " + i + ";"))
+    for i in localvars:
+        template_blocks.append(blocks.StringBlock("%(" + "dt" + ")s " + i + ";"))
 
     template_blocks.append(blocks.StringBlock("for(int i_comp = tid; i_comp < num_comps; i_comp += total_threads) {"))
     if 'spike_state' in updates:
@@ -153,7 +156,7 @@ def filter_body_nodes(body):
     return nodes
 
 
-def get_op(op, arg1, arg2):
+def get_op(op, arg1, arg2=None):
     if isinstance(op, ast.Add):
         return "(({}) + ({}))".format(arg1, arg2)
     elif isinstance(op, ast.Sub):
@@ -164,8 +167,8 @@ def get_op(op, arg1, arg2):
         return "(({}) / ({}))".format(arg1, arg2)
     elif isinstance(op, ast.Mod):
         return "(({}) % ({}))".format(arg1, arg2)
-    elif isinstance(op, ast.pow):
-        return "pow((double){}, (double){})".format(arg1, arg2)
+    elif isinstance(op, ast.Pow):
+        return "POW((double){}, (double){})".format(arg1, arg2)
     elif isinstance(op, ast.LShift):
         return "(({}) << ({}))".format(arg1, arg2)
     elif isinstance(op, ast.RShift):
@@ -176,6 +179,10 @@ def get_op(op, arg1, arg2):
         return "(({}) ^ ({}))".format(arg1, arg2)
     elif isinstance(op, ast.BitAnd):
         return "(({}) & ({}))".format(arg1, arg2)
+    elif isinstance(op, ast.USub):
+        return "(-{})".format(arg1.id)
+    elif isinstance(op, ast.UAdd):
+        return "(+{})".format(arg1.id)
     raise Exception("Could not identify operator " + str(op))
 
 
@@ -187,11 +194,14 @@ def handle_op_node(node):
             node_left = node.left.id
         if isinstance(node.left, ast.BinOp):
             node_left = handle_op_node(node.left)
+        if isinstance(node.left, ast.UnaryOp):
+            node_left = handle_op_node(node.left)
         if isinstance(node.left, ast.Call):
             arguments = '(' + ','.join([handle_op_node(i) for i in node.left.args]) + ')'
-            node_left = node.left.func.id + arguments
+            node_left = node.left.func.id+'%(fletter)s' + arguments
         else:
-            print('Warning: Could not find the type of left node ', node.left,' in a BinOp. Translation might be incorrect.')
+            print(node.left)
+            # print('Warning: Could not find the type of left node ', node.left,' in a BinOp. Translation might be incorrect.')
 
         if isinstance(node.right, ast.Num):
             node_right = node.right.n
@@ -199,14 +209,23 @@ def handle_op_node(node):
             node_right = node.right.id
         if isinstance(node.right, ast.BinOp):
             node_right = handle_op_node(node.right)
+        if isinstance(node.right, ast.UnaryOp):
+            node_right = handle_op_node(node.right)
         if isinstance(node.right, ast.Call):
             arguments = '(' + ','.join([handle_op_node(i) for i in node.right.args]) + ')'
-            node_right = node.right.func.id + arguments
+            node_right = node.right.func.id+'%(fletter)s' + arguments
         else:
-            print('Warning: Could not find the type of', node.right,'. Translation might be incorrect.')
+            print(node.right)
+            # print('Warning: Could not find the type of', node.right,'. Translation might be incorrect.')
 
         return get_op(node.op, node_left, node_right)
-    if isinstance(node, ast.Compare):
+    
+    if isinstance(node, ast.UnaryOp):
+        return get_op(node.op, node.operand)
+    elif isinstance(node, ast.Call):
+        arguments = '(' + ','.join([handle_op_node(i) for i in node.args]) + ')'
+        return node.func.id +'%(fletter)s'+ arguments
+    elif isinstance(node, ast.Compare):
         return handle_op_node(node.left) + ''.join([handle_op_node(i) for i in node.ops]) + ''.join([handle_op_node(i) for i in node.comparators])
     elif isinstance(node, ast.Num):
         return node.n
@@ -240,15 +259,14 @@ def handle_op_node(node):
         return '||'
     elif isinstance(node, ast.BoolOp):
         return (handle_op_node(node.op)).join(['(' + handle_op_node(i)+ ')' for i in node.values])
-    print(node.left, node.right)
+    # print(node.left, node.right)
     raise Exception("Could not identify node op")
 
 
 def evaluate_node(node, parent):
     """
-    Given a node, evaluate it and adda a result the parent node.
+    Given a node, evaluate it and add a result to the parent node.
     """
-    # prettyparseprint(node)
     if isinstance(node, ast.For):
         iterator = node.target.id
 
@@ -256,7 +274,6 @@ def evaluate_node(node, parent):
         iterator_block = blocks.ExprBlock("int", "iter_" + str(iterator))
         if iterator_block not in parent.variables:
             parent.append_block(iterator_block)
-
         if node.iter.func.id == "range":
             # Create a new list to be immediately used then destroyed.
             # First find the appropriate parameters for the C range func.
@@ -318,6 +335,7 @@ def evaluate_node(node, parent):
             print(f_node)
             evaluate_node(f_node, range_block)
     elif isinstance(node, ast.Expr):
+        print('expr')
         if isinstance(node.value, ast.Call):
             if node.value.func.id == "print":
                 arguments = node.value.args
@@ -327,6 +345,8 @@ def evaluate_node(node, parent):
     elif isinstance(node, ast.Assign):
         targets = node.targets
         value = node.value
+
+        # prettyparseprint(value.left)
         if is_literal(value):
             if isinstance(value, ast.Num):
                 var = value.n
@@ -349,7 +369,10 @@ def evaluate_node(node, parent):
                 num_obj = blocks.AssignBlock(
                             "Object", target.id, handle_op_node(value),
                             pointer_depth=1)
+                # print(num_obj)
                 parent.append_block(num_obj)
+        # elif isinstance(value, ast.UnaryOp):
+        #     print(value.n,'is unary')
         else:
             print("Is BinOp?", isinstance(value, ast.BinOp))
             print(handle_op_node(value))
@@ -361,7 +384,6 @@ def evaluate_node(node, parent):
             # raise Exception(
             #     "No support yet for loading a value from a non-literal")
 
-
 def translate(file_, indent_size=4, main_func = None):
     """
     The function for actually translating the code.
@@ -371,6 +393,8 @@ def translate(file_, indent_size=4, main_func = None):
     # Setup
     with open(file_, "r") as f:
         text = f.read()
+        # replace occurences of dt with ddt
+        text = text.replace("dt","ddt")
         nodes = ast.parse(text).body
         code = text.splitlines()
     blocks.Block.indent = indent_size
@@ -385,10 +409,68 @@ def translate(file_, indent_size=4, main_func = None):
     # Add main function
     if main_func is None:
         main_func = main_function()
+
     top.append_block(main_func)
 
     nodes = filter_body_nodes(nodes)
     for node in nodes:
         evaluate_node(node, main_func)
+
+    return str(top)
+
+
+def import_block(top=None,model_base=None):
+    if model_base=='BaseAxonHillockModel':
+        top.append_block(blocks.StringBlock('from neurokernel.LPU.NDComponents.AxonHillockModels.BaseAxonHillockModel import *'))
+    elif model_base=='BaseSynapseModel':
+        top.append_block(blocks.StringBlock('from neurokernel.LPU.NDComponents.SynapseModels.BaseSynapseModel import *'))
+        top.append_block(blocks.StringBlock())
+    top.append_block(blocks.StringBlock())
+
+
+def pre_run_block(top=None,assign=None,ind=0,indent_size=4):
+    top.append_block(blocks.StringBlock('def pre_run(self,update_pointers):',ind))
+    ind+=indent_size
+    init = 'initV'
+    top.append_block(blocks.StringBlock('if \''+str(init)+'\' in self.params_dict:',ind))
+    ind+=indent_size
+    top.append_block(blocks.StringBlock('self.add_initializer(\'initV\', \'V\', update_pointers)',ind))
+    top.append_block(blocks.StringBlock('self.add_initializer(\'initV\', \'internalV\', update_pointers)',ind))
+    ind-=indent_size
+    if '\'resting_potential\'' in '\n'.join(assign):
+        top.append_block(blocks.StringBlock('else:',ind))
+        ind+=indent_size
+        init = 'resting_potential'
+        top.append_block(blocks.StringBlock('self.add_initializer(\'resting_potential\', \'V\', update_pointers)',ind))
+        top.append_block(blocks.StringBlock('self.add_initializer(\'resting_potential\', \'internalV\', update_pointers)',ind))
+        ind-=indent_size
+    ind-=indent_size
+    top.append_block(blocks.StringBlock())
+
+
+def wrapper(file_, indent_size=4, model=None, model_base=None, assign=None):
+    ind = 0
+    with open(file_, "r") as f:
+        text = f.read()
+    top = blocks.Block(should_indent=False)
+    
+    import_block(top,model_base)
+
+    top.append_block(blocks.StringBlock('class '+model+'('+model_base+'):'))
+    ind+=indent_size
+    top.append_block(blocks.StringBlock(('\n'+' '*ind).join(assign),ind))
+    top.append_block(blocks.StringBlock())
+    
+    if '\'V\'' in '\n'.join(assign):
+        pre_run_block(top,assign,ind,indent_size)
+
+    top.append_block(blocks.StringBlock('def get_update_template(self):',ind))
+    ind+=indent_size
+    top.append_blocks([blocks.StringBlock('template = """',ind),
+                    blocks.StringBlock(text),
+                    blocks.StringBlock('"""',ind),
+                    blocks.StringBlock('return template',ind)])
+    ind-=indent_size
+    top.append_block(blocks.StringBlock())
 
     return str(top)

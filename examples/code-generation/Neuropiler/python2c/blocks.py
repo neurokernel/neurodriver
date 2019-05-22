@@ -425,12 +425,13 @@ class StringBlock(InlineBlock):
     """
     Block for representing a single line/string from code.
     """
-    def __init__(self, contents=""):
+    def __init__(self, contents="",indent=0):
         assert isinstance(contents, str)
         self.contents = contents
+        self.indent = indent
 
     def block_strings(self):
-        return str(self.contents)
+        return " "*self.indent+str(self.contents)
 
     def __str__(self):
-        return str(self.contents)
+        return " "*self.indent+str(self.contents)

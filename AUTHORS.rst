@@ -13,6 +13,8 @@ following `Bionet Group <http://www.bionet.ee.columbia.edu/>`_ researchers:
 * `Lev Givon <http://lebedov.github.io>`_
 * `Konstantinos Psychas <http://gr.linkedin.com/in/kpsychas>`_
 * `Nikul H. Ukani <http://www.linkedin.com/pub/nikul-ukani/16/737/990>`_
+* `Aditya Sinha <https://www.linkedin.com/in/sinhaaditya/>`_
+* `Mehmet Kerem Turkcan <http://keremturkcan.com/>`_
 * `Chung-Heng Yeh <http://www.linkedin.com/pub/chung-heng-yeh/5a/7a6/a>`_
 * `Yiyin Zhou <http://www.bionet.ee.columbia.edu/people#yiyin-zhou>`_
 
