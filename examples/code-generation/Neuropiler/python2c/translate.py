@@ -179,14 +179,22 @@ def get_op(op, arg1, arg2=None):
         return "(({}) ^ ({}))".format(arg1, arg2)
     elif isinstance(op, ast.BitAnd):
         return "(({}) & ({}))".format(arg1, arg2)
+    # Unary operator support added by Aditya Sinha
     elif isinstance(op, ast.USub):
-        return "(-{})".format(arg1.id)
+        if isinstance(arg1,ast.BinOp):
+            return "(-{})".format(handle_op_node(arg1))
+        else:
+            return "(-{})".format(arg1.id)
     elif isinstance(op, ast.UAdd):
-        return "(+{})".format(arg1.id)
+        if isinstance(arg1,ast.BinOp):
+            return "(+{})".format(handle_op_node(arg1))
+        else:
+            return "(+{})".format(arg1.id)
     raise Exception("Could not identify operator " + str(op))
 
 
 def handle_op_node(node):
+    # Conversion of join arguments to str bug, unary operator support added by Aditya Sinha
     if isinstance(node, ast.BinOp):
         if isinstance(node.left, ast.Num):
             node_left = node.left.n
@@ -197,7 +205,7 @@ def handle_op_node(node):
         if isinstance(node.left, ast.UnaryOp):
             node_left = handle_op_node(node.left)
         if isinstance(node.left, ast.Call):
-            arguments = '(' + ','.join([handle_op_node(i) for i in node.left.args]) + ')'
+            arguments = '(' + ','.join([str(handle_op_node(i)) for i in node.left.args]) + ')'
             node_left = node.left.func.id+'%(fletter)s' + arguments
         else:
             print(node.left)
@@ -212,7 +220,7 @@ def handle_op_node(node):
         if isinstance(node.right, ast.UnaryOp):
             node_right = handle_op_node(node.right)
         if isinstance(node.right, ast.Call):
-            arguments = '(' + ','.join([handle_op_node(i) for i in node.right.args]) + ')'
+            arguments = '(' + ','.join([str(handle_op_node(i)) for i in node.right.args]) + ')'
             node_right = node.right.func.id+'%(fletter)s' + arguments
         else:
             print(node.right)
@@ -223,10 +231,10 @@ def handle_op_node(node):
     if isinstance(node, ast.UnaryOp):
         return get_op(node.op, node.operand)
     elif isinstance(node, ast.Call):
-        arguments = '(' + ','.join([handle_op_node(i) for i in node.args]) + ')'
+        arguments = '(' + ','.join([str(handle_op_node(i)) for i in node.args]) + ')'
         return node.func.id +'%(fletter)s'+ arguments
     elif isinstance(node, ast.Compare):
-        return handle_op_node(node.left) + ''.join([handle_op_node(i) for i in node.ops]) + ''.join([handle_op_node(i) for i in node.comparators])
+        return handle_op_node(node.left) + ''.join([str(handle_op_node(i)) for i in node.ops]) + ''.join([str(handle_op_node(i)) for i in node.comparators])
     elif isinstance(node, ast.Num):
         return node.n
     elif isinstance(node, ast.Str):
@@ -258,7 +266,7 @@ def handle_op_node(node):
     elif isinstance(node, ast.Or):
         return '||'
     elif isinstance(node, ast.BoolOp):
-        return (handle_op_node(node.op)).join(['(' + handle_op_node(i)+ ')' for i in node.values])
+        return (handle_op_node(node.op)).join(['(' + str(handle_op_node(i))+ ')' for i in node.values])
     # print(node.left, node.right)
     raise Exception("Could not identify node op")
 
@@ -393,7 +401,7 @@ def translate(file_, indent_size=4, main_func = None):
     # Setup
     with open(file_, "r") as f:
         text = f.read()
-        # replace occurences of dt with ddt
+        # replace occurences of dt with ddt, added by Aditya Sinha
         text = text.replace("dt","ddt")
         nodes = ast.parse(text).body
         code = text.splitlines()
@@ -418,7 +426,7 @@ def translate(file_, indent_size=4, main_func = None):
 
     return str(top)
 
-
+# Added by Aditya Sinha
 def import_block(top=None,model_base=None):
     if model_base=='BaseAxonHillockModel':
         top.append_block(blocks.StringBlock('from neurokernel.LPU.NDComponents.AxonHillockModels.BaseAxonHillockModel import *'))
@@ -427,7 +435,7 @@ def import_block(top=None,model_base=None):
         top.append_block(blocks.StringBlock())
     top.append_block(blocks.StringBlock())
 
-
+# Added by Aditya Sinha
 def pre_run_block(top=None,assign=None,ind=0,indent_size=4):
     top.append_block(blocks.StringBlock('def pre_run(self,update_pointers):',ind))
     ind+=indent_size
@@ -447,7 +455,7 @@ def pre_run_block(top=None,assign=None,ind=0,indent_size=4):
     ind-=indent_size
     top.append_block(blocks.StringBlock())
 
-
+# Added by Aditya Sinha
 def wrapper(file_, indent_size=4, model=None, model_base=None, assign=None):
     ind = 0
     with open(file_, "r") as f:

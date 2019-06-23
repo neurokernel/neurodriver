@@ -1,4 +1,4 @@
-class LeakyIAF():
+class LeakyIAF(BaseAxonHillockModel):
     updates = ['spike_state', # (bool)
                'V' # Membrane Potential (mV)
               ]
@@ -15,10 +15,10 @@ class LeakyIAF():
     # internals are the variables used to store internal states of the model,
     # and are ordered dict whose keys are the variables and value are the initial values.
     internals = OrderedDict([('internalV', 0.0)]) # Membrane Potential (mV)
-    
+
     def step():
         for i in range(n_steps):
-            V = V + I * dt 
+            V = V + I * dt
             if V > threshold:
                 V = reset_potential
-                spike = 1
+                spike_state = 1

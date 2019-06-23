@@ -2,7 +2,7 @@ from argparse import ArgumentParser
 import ast
 import astunparse
 from python2c.python2c import *
-from python2c.translate import main_function
+from python2c.translate import main_function, prettyparseprint
 from collections import OrderedDict
 
 
@@ -15,7 +15,8 @@ def neuropile_main(file):
         if isinstance(node, ast.FunctionDef) or isinstance(node, ast.ClassDef):
             if isinstance(node, ast.ClassDef):
                 className = node.name
-                neuropiler_classes[className] = {'assignments': [], 'functions': {}}
+                model_base = node.bases[0].id
+                neuropiler_classes[className] = {'assignments': [], 'functions': {},'model_base': model_base}
                 for i in node.body:
                     if isinstance(i, ast.Assign):
                         neuropiler_classes[className]['assignments'].append(astunparse.unparse(i).replace('\n',''))
@@ -27,15 +28,30 @@ def neuropile_main(file):
 
 
 if __name__ == "__main__":
+    import neurokernel
+    import inspect
+
     parser = ArgumentParser(description="Translate Python code to C.")
     parser.add_argument("file", help=".py file to translate.")
     arguments = parser.parse_args()
     results = neuropile_main(arguments.file)
+
     for model_name in results.keys():
+    	# Path and model base functionality added by Aditya Sinha
+        model_base = results[model_name]['model_base']
+        path = inspect.getfile(neurokernel).replace('__init__.py','')+'LPU/NDComponents/'+model_base[4:]+'s/'
         if 'step' in results[model_name]['functions']:
-            with open(model_name+".py", "w") as python_code:
+        	# write step function
+            with open(model_name+"_temp.py", "w") as python_code:
                 python_code.write(results[model_name]['functions']['step'])
+            # evaluate the assignments
             main_func_block = eval('main_function(' + (','.join(results[model_name]['assignments'])) + ')')
-            translated_code = translate.translate(model_name+".py", indent_size=4, main_func = main_func_block)
+            # translate the iterative update
+            translated_code = translate.translate(model_name+"_temp.py", indent_size=4, main_func = main_func_block)
+            # write the whole template
             with open(model_name+"_template.c", "w") as cuda_code:
                 cuda_code.write(translated_code)
+            # wrap the template to make neurodriver executable model, added by Aditya Sinha
+            wrapped_code = translate.wrapper(model_name+"_template.c", indent_size=4, model=model_name, model_base = model_base, assign = results[model_name]['assignments'])
+            with open(path+model_name+"_gen.py", "w") as python_code:
+                python_code.write(wrapped_code)
