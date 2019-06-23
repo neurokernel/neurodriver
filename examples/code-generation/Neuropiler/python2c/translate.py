@@ -178,7 +178,6 @@ def get_op(op, arg1, arg2=None):
         return "(({}) ^ ({}))".format(arg1, arg2)
     elif isinstance(op, ast.BitAnd):
         return "(({}) & ({}))".format(arg1, arg2)
-    # Unary operator support added by Aditya Sinha
     elif isinstance(op, ast.USub):
         if isinstance(arg1,ast.BinOp):
             return "(-{})".format(handle_op_node(arg1))
@@ -193,7 +192,6 @@ def get_op(op, arg1, arg2=None):
 
 
 def handle_op_node(node):
-    # Conversion of join arguments to str bug, unary operator support added by Aditya Sinha
     if isinstance(node, ast.BinOp):
         if isinstance(node.left, ast.Num):
             node_left = node.left.n
@@ -400,7 +398,6 @@ def translate(file_, indent_size=4, main_func = None):
     # Setup
     with open(file_, "r") as f:
         text = f.read()
-        # replace occurences of dt with ddt, added by Aditya Sinha
         text = text.replace("dt","ddt")
         nodes = ast.parse(text).body
         code = text.splitlines()
@@ -425,7 +422,6 @@ def translate(file_, indent_size=4, main_func = None):
 
     return str(top)
 
-# Added by Aditya Sinha
 def import_block(top=None,model_base=None):
     if model_base=='BaseAxonHillockModel':
         top.append_block(blocks.StringBlock('from neurokernel.LPU.NDComponents.AxonHillockModels.BaseAxonHillockModel import *'))
@@ -434,7 +430,6 @@ def import_block(top=None,model_base=None):
         top.append_block(blocks.StringBlock())
     top.append_block(blocks.StringBlock())
 
-# Added by Aditya Sinha
 def pre_run_block(top=None,assign=None,ind=0,indent_size=4):
     top.append_block(blocks.StringBlock('def pre_run(self,update_pointers):',ind))
     ind+=indent_size
@@ -454,7 +449,6 @@ def pre_run_block(top=None,assign=None,ind=0,indent_size=4):
     ind-=indent_size
     top.append_block(blocks.StringBlock())
 
-# Added by Aditya Sinha
 def wrapper(file_, indent_size=4, model=None, model_base=None, assign=None):
     ind = 0
     with open(file_, "r") as f:

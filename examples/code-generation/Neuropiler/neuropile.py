@@ -37,7 +37,6 @@ if __name__ == "__main__":
     results = neuropile_main(arguments.file)
 
     for model_name in results.keys():
-    	# Path and model base functionality added by Aditya Sinha
         model_base = results[model_name]['model_base']
         path = inspect.getfile(neurokernel).replace('__init__.py','')+'LPU/NDComponents/'+model_base[4:]+'s/'
         if 'step' in results[model_name]['functions']:
@@ -51,7 +50,6 @@ if __name__ == "__main__":
             # write the whole template
             with open(model_name+"_template.c", "w") as cuda_code:
                 cuda_code.write(translated_code)
-            # wrap the template to make neurodriver executable model, added by Aditya Sinha
             wrapped_code = translate.wrapper(model_name+"_template.c", indent_size=4, model=model_name, model_base = model_base, assign = results[model_name]['assignments'])
             with open(path+model_name+"_gen.py", "w") as python_code:
                 python_code.write(wrapped_code)

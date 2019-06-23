@@ -492,7 +492,6 @@ class LeakyIAF(object):
          'capacitance': self.capacitance, 'resistance': self.resistance})
         return G
 
-# Added by Aditya Sinha
 class myLeakyIAF(object):
     ElementClass = 'neuron'
     def __init__(self, name = "", resting_potential = -67.5489770451,
@@ -561,7 +560,6 @@ class AlphaSynapse(object):
          'reverse': self.reverse, 'gmax': self.gmax, 'circuit': 'local' })
         return G
 
-# Added by Aditya Sinha
 class myAlphaSynapse(object):
     ElementClass = 'synapse'
     def __init__(self, name = "", ar = 1.1, ad = 1.9, reverse = 65.0,
@@ -908,7 +906,6 @@ class InIStep(InIBoxcar):
     def __init__(self, node_id, I_val, t_start, t_end, var = 'I'):
         InIBoxcar.__init__(self, node_id, I_val, t_start, t_end, var = var)
 
-# Added by Aditya Sinha
 class InSpike(object):
     ElementClass = 'input'
     def __init__(self, node_id, density, var = 'I'):

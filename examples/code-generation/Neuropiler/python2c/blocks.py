@@ -423,7 +423,6 @@ class StringBlock(InlineBlock):
     """
     Block for representing a single line/string from code.
     """
-    # Relative indent functionality added by Aditya Sinha
     def __init__(self, contents="",indent=0):
         assert isinstance(contents, str)
         self.contents = contents
