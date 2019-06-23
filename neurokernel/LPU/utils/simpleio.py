@@ -9,6 +9,7 @@ import numbers
 import h5py
 import numpy as np
 
+
 def dataset_append(dataset, arr):
     """
     Append an array to an h5py dataset.

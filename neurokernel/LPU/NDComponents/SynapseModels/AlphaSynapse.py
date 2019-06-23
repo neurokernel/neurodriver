@@ -116,7 +116,6 @@ __global__ void update(int num_comps, %(dt)s dt, int nsteps,
 
 if __name__ == '__main__':
     import argparse
-    import itertools
 
     import networkx as nx
     import h5py
@@ -126,7 +125,6 @@ if __name__ == '__main__':
     from neurokernel.LPU.LPU import LPU
     from neurokernel.LPU.InputProcessors.FileInputProcessor import FileInputProcessor
     from neurokernel.LPU.OutputProcessors.FileOutputProcessor import FileOutputProcessor
-    import neurokernel.mpi_relaunch
 
     dt = 1e-4
     dur = 1.0

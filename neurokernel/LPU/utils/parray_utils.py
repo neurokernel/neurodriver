@@ -2,7 +2,6 @@
 
 
 import numpy as np
-import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 from pycuda.tools import dtype_to_ctype, context_dependent_memoize
 

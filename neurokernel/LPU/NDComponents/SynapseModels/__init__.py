@@ -1,5 +1,5 @@
-import os
 import fnmatch
+import os
 
 __all__ = []
 

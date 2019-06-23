@@ -1,6 +1,6 @@
-from pycuda.compiler import SourceModule
-import pycuda.gpuarray as garray
 import numpy as np
+import pycuda.gpuarray as garray
+from pycuda.compiler import SourceModule
 
 size_of_curandStateXORWOW = 12
 

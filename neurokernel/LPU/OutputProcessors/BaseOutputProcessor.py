@@ -1,11 +1,12 @@
 
-from future.utils import listvalues
 import numpy as np
-import pycuda.gpuarray as garray
-from pycuda.tools import dtype_to_ctype, context_dependent_memoize
 import pycuda.elementwise as elementwise
+import pycuda.gpuarray as garray
+from future.utils import listvalues
+from pycuda.tools import dtype_to_ctype, context_dependent_memoize
 
 from neurokernel.LPU.LPU import LPU
+
 
 class BaseOutputProcessor(object):
     def __init__(self, var_list, sample_interval=1):

@@ -8,22 +8,17 @@ import argparse
 import itertools
 import random
 
-from future.utils import iteritems
-import numpy as np
-
 import data.gen_generic_lpu as g
-
-from neurokernel.tools.logging import setup_logger
 import neurokernel.core_gpu as core
-
 import neurokernel.pattern as pattern
 import neurokernel.plsel as plsel
-from neurokernel.LPU.LPU import LPU
+import numpy as np
+from future.utils import iteritems
+from neurokernel.tools.logging import setup_logger
 
 from neurokernel.LPU.InputProcessors.FileInputProcessor import FileInputProcessor
+from neurokernel.LPU.LPU import LPU
 from neurokernel.LPU.OutputProcessors.FileOutputProcessor import FileOutputProcessor
-
-import neurokernel.mpi_relaunch
 
 # Execution parameters:
 dt = 1e-4

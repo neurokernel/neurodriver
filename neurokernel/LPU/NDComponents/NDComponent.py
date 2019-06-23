@@ -1,18 +1,14 @@
 #!/usr/bin/env python
 
 
-import warnings
-from abc import ABCMeta, abstractmethod, abstractproperty
-import os.path
-import numpy as np
-from future.utils import with_metaclass
+from abc import ABCMeta, abstractmethod
 
-import pycuda.gpuarray as garray
-from pycuda.tools import dtype_to_ctype
-import pycuda.driver as cuda
+from future.utils import with_metaclass
 from pycuda.compiler import SourceModule
+from pycuda.tools import dtype_to_ctype
 
 from neurokernel.LPU.utils.simpleio import *
+
 
 class NDComponent(with_metaclass(ABCMeta, object)):
     # __metaclass__ = ABCMeta

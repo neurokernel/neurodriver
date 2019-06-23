@@ -16,20 +16,17 @@ that generates no meaningful responses to the input signal.
 """
 
 import argparse
-import itertools
 import random
 
-import networkx as nx
-
-from neurokernel.tools.logging import setup_logger
 import neurokernel.core_gpu as core
-
 import neurokernel.pattern as pattern
 import neurokernel.plsel as plsel
-from neurokernel.LPU.LPU import LPU
+from neurokernel.tools.logging import setup_logger
 
 from neurokernel.LPU.InputProcessors.FileInputProcessor import FileInputProcessor
+from neurokernel.LPU.LPU import LPU
 from neurokernel.LPU.OutputProcessors.FileOutputProcessor import FileOutputProcessor
+
 
 def main():
 
@@ -37,8 +34,6 @@ def main():
         """
         Set `connected` to True to connect the LPUs.
         """
-
-        import neurokernel.mpi_relaunch
 
         out_name = 'un' if not connected else 'co'
         man = core.Manager()

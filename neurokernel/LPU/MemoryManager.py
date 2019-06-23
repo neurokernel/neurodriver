@@ -1,13 +1,12 @@
 
+import numpy as np
+import pycuda.elementwise as elementwise
+import pycuda.gpuarray as garray
 from future.utils import iteritems
+from pycuda.tools import dtype_to_ctype
 
 from .utils import parray
-import pycuda.gpuarray as garray
-from pycuda.tools import dtype_to_ctype
-import pycuda.elementwise as elementwise
 
-import numpy as np
-import numbers
 
 class MemoryManager(object):
     def __init__(self,devices=None):

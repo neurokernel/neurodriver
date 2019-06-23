@@ -6,8 +6,8 @@ Visualize output of intro demo.
 
 import concurrent.futures
 
-import numpy as np
 import matplotlib as mpl
+
 mpl.use('agg')
 
 import neurokernel.LPU.utils.visualizer as vis

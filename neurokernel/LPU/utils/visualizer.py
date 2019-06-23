@@ -4,26 +4,22 @@
 LPU output visualization.
 """
 
-import collections
-from collections import OrderedDict
-import itertools
 import os
-import h5py
+from collections import OrderedDict
 
-from future.utils import itervalues, iteritems
+import h5py
 import matplotlib
-from matplotlib import cm
-from matplotlib.colors import Normalize
 import matplotlib.pyplot as plt
+from future.utils import itervalues, iteritems
+from matplotlib.colors import Normalize
+
 plt.ioff() # interactive mode can interfere with frame updates
 from matplotlib.animation import FFMpegFileWriter, AVConvFileWriter
 from matplotlib.colors import hsv_to_rgb
-import networkx as nx
 import numpy as np
 from scipy.interpolate import griddata
 from shutilwhich import which
 
-from . import simpleio as sio
 
 class visualizer(object):
     """

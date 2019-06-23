@@ -140,18 +140,14 @@ __global__ void update(
 
 if __name__ == '__main__':
     import argparse
-    import itertools
     import networkx as nx
     from neurokernel.tools.logging import setup_logger
     import neurokernel.core_gpu as core
 
     from neurokernel.LPU.LPU import LPU
 
-    from neurokernel.LPU.InputProcessors.FileInputProcessor import FileInputProcessor
     from neurokernel.LPU.InputProcessors.StepInputProcessor import StepInputProcessor
     from neurokernel.LPU.OutputProcessors.FileOutputProcessor import FileOutputProcessor
-
-    import neurokernel.mpi_relaunch
 
     dt = 1e-4
     dur = 0.3

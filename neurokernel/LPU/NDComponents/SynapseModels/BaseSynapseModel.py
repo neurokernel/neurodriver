@@ -1,18 +1,16 @@
 #!/usr/bin/env python
 
-from collections import OrderedDict
+from abc import ABCMeta
 
 import numpy as np
-
-import pycuda.gpuarray as garray
-from pycuda.tools import dtype_to_ctype
 import pycuda.driver as cuda
-from pycuda.compiler import SourceModule
-
-from abc import ABCMeta, abstractmethod, abstractproperty
+import pycuda.gpuarray as garray
 from future.utils import with_metaclass
+from pycuda.compiler import SourceModule
+from pycuda.tools import dtype_to_ctype
 
 from neurokernel.LPU.NDComponents.NDComponent import NDComponent
+
 
 class BaseSynapseModel(with_metaclass(ABCMeta, NDComponent)):
     # __metaclass__ = ABCMeta

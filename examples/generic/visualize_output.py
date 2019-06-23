@@ -10,11 +10,9 @@ Generate demo output by running
 python generic_demo.py
 """
 
-import numpy as np
 import matplotlib as mpl
 mpl.use('agg')
 
-import h5py
 import neurokernel.LPU.utils.visualizer as vis
 import networkx as nx
 

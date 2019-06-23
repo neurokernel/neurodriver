@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
-import sys, os
-from glob import glob
+import os
 
 # Install setuptools if it isn't available:
 try:
@@ -10,7 +9,6 @@ except ImportError:
     from ez_setup import use_setuptools
     use_setuptools()
 
-from distutils.command.install_headers import install_headers
 from setuptools import find_packages
 from setuptools import setup
 

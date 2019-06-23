@@ -1,10 +1,11 @@
-import pycuda.driver as cuda
 import pycuda.gpuarray as garray
 import numpy as np
+import pycuda.elementwise as elementwise
+import pycuda.gpuarray as garray
+from pycuda.tools import dtype_to_ctype
 
 from neurokernel.LPU.LPU import LPU
-from pycuda.tools import dtype_to_ctype
-import pycuda.elementwise as elementwise
+
 
 class BaseInputProcessor(object):
     def __init__(self, var_list, mode=0):

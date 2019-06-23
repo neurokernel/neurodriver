@@ -1,16 +1,11 @@
 #!/usr/bin/env python
-import warnings
-from abc import ABCMeta, abstractmethod, abstractproperty
-import os.path
-import numpy as np
 
-import pycuda.gpuarray as garray
-from pycuda.tools import dtype_to_ctype
-import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
+from pycuda.tools import dtype_to_ctype
 
 from neurokernel.LPU.utils.simpleio import *
 from .BaseDendriteModel import BaseDendriteModel
+
 
 class Aggregator(BaseDendriteModel):
     accesses = ['g','V']

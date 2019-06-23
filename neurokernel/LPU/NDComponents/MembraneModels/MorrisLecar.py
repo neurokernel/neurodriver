@@ -2,13 +2,13 @@
 from collections import OrderedDict
 
 import numpy as np
-
-import pycuda.gpuarray as garray
-from pycuda.tools import dtype_to_ctype
 import pycuda.driver as cuda
+import pycuda.gpuarray as garray
 from pycuda.compiler import SourceModule
+from pycuda.tools import dtype_to_ctype
 
 from neurokernel.LPU.NDComponents.MembraneModels.BaseMembraneModel import BaseMembraneModel
+
 
 class MorrisLecar(BaseMembraneModel):
     params = ['V1', 'V2', 'V3', 'V4', 'phi', 'offset',
@@ -168,7 +168,6 @@ morris_lecar_multiple(int num_comps, %(dt)s dt, int nsteps,
 
 if __name__ == '__main__':
     import argparse
-    import itertools
     import networkx as nx
     from neurokernel.tools.logging import setup_logger
     import neurokernel.core_gpu as core
@@ -177,8 +176,6 @@ if __name__ == '__main__':
 
     from neurokernel.LPU.InputProcessors.StepInputProcessor import StepInputProcessor
     from neurokernel.LPU.OutputProcessors.FileOutputProcessor import FileOutputProcessor
-
-    import neurokernel.mpi_relaunch
 
     dt = 1e-4
     dur = 1.0

@@ -43,7 +43,6 @@ __global__ void update(int num_comps, %(dt)s dt, int steps,
 
 if __name__ == '__main__':
     import argparse
-    import itertools
     import networkx as nx
     from neurokernel.tools.logging import setup_logger
     import neurokernel.core_gpu as core
@@ -52,8 +51,6 @@ if __name__ == '__main__':
 
     from neurokernel.LPU.InputProcessors.RampInputProcessor import RampInputProcessor
     from neurokernel.LPU.OutputProcessors.FileOutputProcessor import FileOutputProcessor
-
-    import neurokernel.mpi_relaunch
 
     dt = 1e-4
     dur = 1.0

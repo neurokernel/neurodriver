@@ -1,18 +1,15 @@
 #!/usr/bin/env python
 
-from abc import ABCMeta, abstractmethod, abstractproperty
-from future.utils import with_metaclass
-from neurokernel.LPU.NDComponents.NDComponent import NDComponent
-from neurokernel.LPU.utils.simpleio import *
-
-from collections import OrderedDict
+from abc import ABCMeta
 
 import numpy as np
-
-import pycuda.gpuarray as garray
-from pycuda.tools import dtype_to_ctype
 import pycuda.driver as cuda
+import pycuda.gpuarray as garray
+from future.utils import with_metaclass
 from pycuda.compiler import SourceModule
+from pycuda.tools import dtype_to_ctype
+
+from neurokernel.LPU.NDComponents.NDComponent import NDComponent
 
 
 class BaseAxonHillockModel(with_metaclass(ABCMeta, NDComponent)):

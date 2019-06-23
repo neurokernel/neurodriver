@@ -3,25 +3,18 @@
 """
 Local Processing Unit (LPU) with plugin support for various neuron/synapse models.
 """
-import time
-import collections
-import numbers
 import copy
 import itertools
-
-from future.utils import iteritems
-from past.builtins import long
+import time
 from builtins import zip
 
-
-import pycuda.gpuarray as garray
-from pycuda.tools import dtype_to_ctype
-import pycuda.driver as cuda
-from pycuda.compiler import SourceModule
-import pycuda.elementwise as elementwise
-
-import numpy as np
 import networkx as nx
+import pycuda.driver as cuda
+import pycuda.elementwise as elementwise
+import pycuda.gpuarray as garray
+from future.utils import iteritems
+from past.builtins import long
+from pycuda.tools import dtype_to_ctype
 
 #import time
 
@@ -35,19 +28,11 @@ nx.readwrite.gexf.GEXF.convert_bool['True'] = True
 
 from neurokernel.mixins import LoggerMixin
 from neurokernel.core_gpu import Module, CTRL_TAG, GPOT_TAG, SPIKE_TAG
-from neurokernel.tools.gpu import get_by_inds
 from neurokernel.plsel import Selector
 
-from types import *
-from collections import Counter
-
 from .utils.simpleio import *
-from .utils import parray
 
-from .NDComponents import *
 from .MemoryManager import MemoryManager
-
-import pdb
 
 PORT_IN_GPOT = 'port_in_gpot'
 PORT_IN_SPK = 'port_in_spk'
