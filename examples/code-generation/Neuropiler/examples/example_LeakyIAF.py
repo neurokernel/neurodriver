@@ -1,4 +1,4 @@
-class LeakyIAF():
+class LeakyIAF(BaseAxonHillockModel):
     updates = ['spike_state', # (bool)
                'V' # Membrane Potential (mV)
               ]
@@ -21,4 +21,4 @@ class LeakyIAF():
             V = V + I * dt 
             if V > threshold:
                 V = reset_potential
-                spike = 1
+                spike_state = 1
