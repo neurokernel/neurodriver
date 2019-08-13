@@ -104,7 +104,7 @@ class NDComponent(with_metaclass(ABCMeta, object)):
 
                for(int i = tidx; i < n_pre; i += 32)
                {
-                   dl = delay[i];
+                   dl = delay[start+i];
                    col = current - dl;
                    if(col < 0)
                    {

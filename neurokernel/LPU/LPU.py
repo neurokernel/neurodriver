@@ -1157,7 +1157,13 @@ class LPU(Module):
         for var, d in var_info.items():
             d['cumlen'] = np.cumsum([0]+d['len'])
             d['uids'] = {uid:i for i, uid in enumerate(d['uids'])}
-            self.memory_manager.memory_alloc(var, d['cumlen'][-1], d['delay']+2,\
+            
+            if isinstance(var, str):
+                size = d['cumlen'][-1]
+            elif isinstance(var, tuple):
+                size = d['cumlen'][-1] * len(var)
+
+            self.memory_manager.memory_alloc(var, size, d['delay']+2,\
                 dtype=self.default_dtype if not var=='spike_state' else np.int32,
                 info=d)
 

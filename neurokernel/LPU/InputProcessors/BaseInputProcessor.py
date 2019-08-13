@@ -1,3 +1,5 @@
+
+import itertools
 import pycuda.driver as cuda
 import pycuda.gpuarray as garray
 import numpy as np
@@ -63,18 +65,30 @@ class BaseInputProcessor(object):
         self.update_input()
         for var in self.variables:
             self._d_input[var].set(self.variables[var]['input'])
+            # print(self._d_input[var].get())
 
         if self.input_file is not None:
             for var, d in self.variables.items():
+                var_folder = '{}/data'.format(var)
                 if var == 'spike_state':
-                    self.input_file_handle[var+'/data'].resize((self.input_file_handle[var+'/data'].shape[0]+1,
+                    self.input_file_handle[var_folder].resize((self.input_file_handle[var_folder].shape[0]+1,
                                                                 len(d['uids'])))
-                    self.input_file_handle[var+'/data'][-1,:] = d['input'].reshape((1,-1))
+                    self.input_file_handle[var_folder][-1,:] = d['input'].reshape((1,-1))
                 else:
                     if self.record_count == 0:
-                        self.input_file_handle[var+'/data'].resize((self.input_file_handle[var+'/data'].shape[0]+1,
-                                                                    len(d['uids'])))
-                        self.input_file_handle[var+'/data'][-1,:] = d['input'].reshape((1,-1))
+                        if isinstance(var, str):
+                            self.input_file_handle[var_folder].resize((self.input_file_handle[var_folder].shape[0]+1,
+                                                                        len(d['uids'])))
+                            self.input_file_handle[var_folder][-1,:] = d['input'].reshape((1,-1))
+                        elif isinstance(var, tuple):
+                            n = len(var)
+                            for i, ind_var in enumerate(var):
+                                var_subfolder = '{}/{}'.format(var_folder, ind_var)
+                                self.input_file_handle[var_subfolder].resize(
+                                                (self.input_file_handle[var_subfolder].shape[0]+1,
+                                                                            len(d['uids'])))
+                                self.input_file_handle[var_subfolder][-1,:] = d['input'][i::n].reshape((1,-1))
+
                     self.record_count = (self.record_count + 1) % self.input_interval
 
 
@@ -87,6 +101,7 @@ class BaseInputProcessor(object):
                                    buff.current*buff.ld*\
                                    buff.dtype.itemsize)
         self.add_inds(self._d_input[var], dest_mem, self.dest_inds[var])
+        # print(dest_mem.get())
 
     # Should be implemented by child class
     def update_input(self):
@@ -118,19 +133,42 @@ class BaseInputProcessor(object):
                 assert(var in cd)
                 pre = cd[var]['pre'][0]
                 inds.append(v_dict['uids'][pre])
-            self.dest_inds[var] = garray.to_gpu(np.array(inds,np.int32))
-            self.dtypes[var] = v_dict['buffer'].dtype
-            self._d_input[var] = garray.zeros(len(d['uids']),self.dtypes[var])
-            self.variables[var]['input'] = np.zeros(len(d['uids']),
-                                                    self.dtypes[var])
+            if isinstance(var, str):
+                self.dest_inds[var] = garray.to_gpu(np.array(inds,np.int32))
+                self.dtypes[var] = v_dict['buffer'].dtype
+                self._d_input[var] = garray.zeros(len(d['uids']), self.dtypes[var])
+                self.variables[var]['input'] = np.zeros(len(d['uids']),
+                                                        self.dtypes[var])
+            elif isinstance(var, tuple):
+                n = len(var)
+                new_inds = list(itertools.chain.from_iterable(
+                                [[ind*n+i for i in range(n)] for ind in inds]))
+                self.dest_inds[var] = garray.to_gpu(np.array(new_inds, np.int32))
+                self.dtypes[var] = v_dict['buffer'].dtype
+                self._d_input[var] = garray.zeros(len(d['uids'])*n, self.dtypes[var])
+                self.variables[var]['input'] = np.zeros(len(d['uids'])*n,
+                                                        self.dtypes[var])
+
+            else:
+                raise TypeError('variable name must either be a str or a tuple of str')
+
 
             if self.input_file is not None:
-                self.input_file_handle.create_dataset(var+'/data', (0,len(d['uids'])),
-                                                      d['input'].dtype,
-                                                      maxshape=(None,len(d['uids'])))
-                self.input_file_handle.create_dataset(var+'/uids',
+                self.input_file_handle.create_dataset('{}/uids'.format(var),
                                                       data=np.array(d['uids'],
                                                                     dtype = 'S'))
+                if isinstance(var, str):
+                    self.input_file_handle.create_dataset('{}/data'.format(var), (0,len(d['uids'])),
+                                                          d['input'].dtype,
+                                                          maxshape=(None,len(d['uids'])))
+                elif isinstance(var, tuple):
+                    n = len(var)
+                    for ind_var in var:
+                        self.input_file_handle.create_dataset('{}/data/{}'.format(var, ind_var), (0,len(d['uids'])),
+                                                              d['input'].dtype,
+                                                              maxshape=(None,len(d['uids'])))
+                else:
+                    raise TypeError('variable name must either be a str or a tuple of str')
                 self.record_count = 0
         self.pre_run()
 
