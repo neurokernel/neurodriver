@@ -9,7 +9,7 @@
 import numpy as np
 import pycuda.driver as cuda
 from pytools import memoize
-
+from six import PY2
 from . import parray_utils as pu
 
 """ utilities"""
@@ -160,13 +160,17 @@ def PitchTrans(shape, dst, dst_ld, src, src_ld, dtype, aligned=False,
 
     trans = cuda.Memcpy2D()
     trans.src_pitch = src_ld * size
-    if isinstance(src, (cuda.DeviceAllocation, int, long)):
+    if PY2:
+        _dtypes = (cuda.DeviceAllocation, int, long)
+    else:
+        _dtypes = (cuda.DeviceAllocation, int)
+    if isinstance(src, _dtypes):
         trans.set_src_device(src)
     else:
         trans.set_src_host(src)
 
     trans.dst_pitch = dst_ld * size
-    if isinstance(dst, (cuda.DeviceAllocation, int, long)):
+    if isinstance(dst, _dtypes):
         trans.set_dst_device(dst)
     else:
         trans.set_dst_host(dst)
