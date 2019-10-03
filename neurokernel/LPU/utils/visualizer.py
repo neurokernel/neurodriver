@@ -194,7 +194,7 @@ class visualizer(object):
             self._update_interval = self._maxt
             self._t = self._maxt
         if self._update_interval == -1:
-            self._update_interval = max(np.asarray(self._dts.values()))*50
+            self._update_interval = max(np.asarray(list(self._dts.values())))*50
         for _ in np.arange(self._t,self._maxt*(1+np.finfo(float).eps),
                            self._update_interval):
             self._update()

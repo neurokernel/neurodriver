@@ -11,6 +11,7 @@ import pycuda.driver as cuda
 from pytools import memoize
 from six import PY2
 from . import parray_utils as pu
+from past.builtins import long
 
 """ utilities"""
 @memoize
@@ -125,8 +126,7 @@ def _assignshape(shape, axis, value):
     return tuple(a)
 
 
-def PitchTrans(shape, dst, dst_ld, src, src_ld, dtype, aligned=False,
-               async = False, stream = None):
+def PitchTrans(shape, dst, dst_ld, src, src_ld, dtype, aligned=False, _async = False, stream = None):
     """
     Wrapper around cuda.Memcpy2D
     Enable pitched memory transfer.
@@ -178,7 +178,7 @@ def PitchTrans(shape, dst, dst_ld, src, src_ld, dtype, aligned=False,
     trans.width_in_bytes = _pd(shape) * size
     trans.height = int(shape[0])
 
-    if async:
+    if _async:
         trans(stream)
     else:
         trans(aligned = aligned)
@@ -375,7 +375,7 @@ class PitchArray(object):
                 cuda.memcpy_htod_async(int(self.gpudata), ary, stream)
             else:
                 PitchTrans(self.shape, int(self.gpudata), self.ld, ary,
-                           _pd(self.shape), self.dtype, async = True,
+                           _pd(self.shape), self.dtype, _async = True,
                            stream = stream)
 
     def get(self, ary = None, pagelocked = False):
@@ -444,7 +444,7 @@ class PitchArray(object):
             else:
                 PitchTrans(self.shape, ary, _pd(self.shape),
                            int(self.gpudata), self.ld, self.dtype,
-                           async = True, stream = stream)
+                           _async = True, stream = stream)
 
         return ary
 
