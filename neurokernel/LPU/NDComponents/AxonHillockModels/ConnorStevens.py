@@ -8,13 +8,23 @@ from pycuda.tools import dtype_to_ctype
 import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
-from BaseAxonHillockModel import BaseAxonHillockModel
+from neurokernel.LPU.NDComponents.AxonHillockModels.BaseAxonHillockModel import BaseAxonHillockModel
 
 class ConnorStevens(BaseAxonHillockModel):
-    updates = ['spike_state', 'V']
-    accesses = ['I']
-    params = ['n','m','h','a','b']
-    internals = OrderedDict([('internalV',-65.)])
+    updates = ['spike_state', # (bool)
+               'V' # Membrane Potential (mV)
+              ]
+    accesses = ['I'] # (\mu A/cm^2 )
+    params = ['n', # state variable for activation of K channel ([0-1] unitless)
+              'm', # state variable for activation of Na channel ([0-1] unitless)
+              'h', # state variable for inactivation of Na channel ([0-1] unitless)
+              'a', # state variable for activation of A channel ([0-1] unitless)
+              'b' # state variable for inactivation of A channel ([0-1] unitless)
+              ]
+    internals = OrderedDict([('internalV',-65.), # Membrane Potential (mV)
+                             ('internalVprev1',-65.), # Membrane Potential (mV)
+                             ('internalVprev2',-65.) # Membrane Potential (mV)
+                            ])
 
     def __init__(self, params_dict, access_buffers, dt,
                  debug=False, LPU_id=None, cuda_verbose=True):
@@ -23,13 +33,13 @@ class ConnorStevens(BaseAxonHillockModel):
         else:
             self.compile_options = []
 
-        self.num_comps = params_dict['n'].size
+        self.num_comps = params_dict[self.params[0]].size
         self.params_dict = params_dict
         self.access_buffers = access_buffers
 
         self.debug = debug
         self.LPU_id = LPU_id
-        self.dtype = params_dict['n'].dtype
+        self.dtype = params_dict[self.params[0]].dtype
 
         self.dt = np.double(dt)
         self.ddt = np.double(1e-6)
@@ -51,11 +61,17 @@ class ConnorStevens(BaseAxonHillockModel):
         self.update_func = self.get_update_func(dtypes)
 
     def pre_run(self, update_pointers):
-        if self.params_dict.has_key('initV'):
+        if 'initV' in self.params_dict:
             cuda.memcpy_dtod(int(update_pointers['V']),
                              self.params_dict['initV'].gpudata,
                              self.params_dict['initV'].nbytes)
             cuda.memcpy_dtod(self.internal_states['internalV'].gpudata,
+                             self.params_dict['initV'].gpudata,
+                             self.params_dict['initV'].nbytes)
+            cuda.memcpy_dtod(self.internal_states['internalVprev1'].gpudata,
+                             self.params_dict['initV'].gpudata,
+                             self.params_dict['initV'].nbytes)
+            cuda.memcpy_dtod(self.internal_states['internalVprev2'].gpudata,
                              self.params_dict['initV'].gpudata,
                              self.params_dict['initV'].nbytes)
 
@@ -101,6 +117,8 @@ __global__ void update(
     %(a)s* g_a,
     %(b)s* g_b,
     %(internalV)s* g_internalV,
+    %(internalVprev1)s* g_internalVprev1,
+    %(internalVprev2)s* g_internalVprev2,
     %(spike_state)s* g_spike_state,
     %(V)s* g_V)
 {
@@ -123,13 +141,15 @@ __global__ void update(
     for(int i = tid; i < num_comps; i += total_threads)
     {
         spike = 0;
-        V = g_internalV[i];
         I = g_I[i];
         n = g_n[i];
         m = g_m[i];
         h = g_h[i];
         a = g_a[i];
         b = g_b[i];
+        V = g_internalV[i];
+        Vprev1 = g_internalVprev1[i];
+        Vprev2 = g_internalVprev2[i];
 
         for (int j = 0; j < nsteps; ++j)
         {
@@ -176,6 +196,8 @@ __global__ void update(
         g_b[i] = b;
         g_V[i] = V;
         g_internalV[i] = V;
+        g_internalVprev1[i] = Vprev1;
+        g_internalVprev2[i] = Vprev2;
         g_spike_state[i] = (spike > 0);
     }
 }
@@ -184,14 +206,14 @@ __global__ void update(
 
     def get_update_func(self, dtypes):
         type_dict = {k: dtype_to_ctype(dtypes[k]) for k in dtypes}
-        type_dict.update({'fletter': 'f' if type_dict['n'] == 'float' else ''})
+        type_dict.update({'fletter': 'f' if type_dict[self.params[0]] == 'float' else ''})
         mod = SourceModule(self.get_update_template() % type_dict,
                            options=self.compile_options)
         func = mod.get_function("update")
         func.prepare('i'+np.dtype(dtypes['dt']).char+'i'+'P'*(len(type_dict)-2))
         func.block = (128,1,1)
         func.grid = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
-                         (self.num_comps-1) / 128 + 1), 1)
+                         (self.num_comps-1) // 128 + 1), 1)
         return func
 
 
@@ -212,7 +234,7 @@ if __name__ == '__main__':
     import neurokernel.mpi_relaunch
 
     dt = 1e-4
-    dur = 1.0
+    dur = 0.3
     steps = int(dur/dt)
 
     parser = argparse.ArgumentParser()
@@ -239,7 +261,7 @@ if __name__ == '__main__':
 
     G = nx.MultiDiGraph()
 
-    G.add_node('neuron0', {
+    G.add_node('neuron0', **{
                'class': 'ConnorStevens',
                'name': 'ConnorStevens',
                'n': 0.,
@@ -251,7 +273,7 @@ if __name__ == '__main__':
 
     comp_dict, conns = LPU.graph_to_dicts(G)
 
-    fl_input_processor = StepInputProcessor('I', ['neuron0'], 40, 0.2, 0.8)
+    fl_input_processor = StepInputProcessor('I', ['neuron0'], 40, 0.15, 0.25)
     fl_output_processor = FileOutputProcessor([('spike_state', None),('V', None)], 'new_output.h5', sample_interval=1)
 
     man.add(LPU, 'ge', dt, comp_dict, conns,
@@ -265,15 +287,28 @@ if __name__ == '__main__':
     # plot the result
     import h5py
     import matplotlib
-    matplotlib.use('PS')
+    matplotlib.use('Agg')
     import matplotlib.pyplot as plt
 
     f = h5py.File('new_output.h5')
     t = np.arange(0, args.steps)*dt
 
     plt.figure()
+    plt.subplot(211)
     plt.plot(t,f['V'].values()[0])
     plt.xlabel('time, [s]')
     plt.ylabel('Voltage, [mV]')
     plt.title('Connor-Stevens Neuron')
+    plt.xlim([0, dur])
+    plt.ylim([-70, 60])
+    plt.grid()
+    plt.subplot(212)
+    spk = f['spike_state/data'].value.flatten().nonzero()[0]
+    plt.stem(t[spk],np.ones((len(spk),)))
+    plt.xlabel('time, [s]')
+    plt.ylabel('Spike')
+    plt.xlim([0, dur])
+    plt.ylim([0, 1.2])
+    plt.grid()
+    plt.tight_layout()
     plt.savefig('csn.png',dpi=300)

@@ -5,6 +5,7 @@ import warnings
 from abc import ABCMeta, abstractmethod, abstractproperty
 import os.path
 import numpy as np
+from future.utils import with_metaclass
 
 import pycuda.gpuarray as garray
 from pycuda.tools import dtype_to_ctype
@@ -13,17 +14,17 @@ from pycuda.compiler import SourceModule
 
 from neurokernel.LPU.utils.simpleio import *
 
-class NDComponent(object):
-    __metaclass__ = ABCMeta
+class NDComponent(with_metaclass(ABCMeta, object)):
+    # __metaclass__ = ABCMeta
 
     accesses = []
     updates = []
-    
+
     @abstractmethod
     def __init__(self, params_dict, access_buffers, dt, debug=False,
                  LPU_id=None, cuda_verbose=False):
         pass
-        
+
     @abstractmethod
     def run_step(self, update_pointers):
         pass
@@ -31,13 +32,13 @@ class NDComponent(object):
 
     def pre_run(self, update_pointers):
         pass
-        
+
     def post_run(self):
         '''
         This method will be called at the end of the simulation.
         '''
         pass
-    
+
     def sum_in_variable(self, var, garr, st=None):
         try:
             a = self.sum_kernel
@@ -54,12 +55,12 @@ class NDComponent(object):
             self.access_buffers[var].ld,                           #i
             self.access_buffers[var].current,                      #i
             self.access_buffers[var].buffer_length)                #i
-        
+
     def __get_sum_kernel(self, num_comps, dtype=np.double):
         template = """
         #define NUM_COMPS %(num_comps)d
 
-        __global__ void sum_input(%(type)s* res, int* delay, int* cumpre, 
+        __global__ void sum_input(%(type)s* res, int* delay, int* cumpre,
                                   int* npre, int* pre, %(type)s* pre_buffer,
                                   int ld, int current, int buffer_length)
         {
@@ -97,7 +98,7 @@ class NDComponent(object):
             comp = bid * 32 + tidy ;
             if(comp < NUM_COMPS){
                int dl;
-               int col; 
+               int col;
                int n_pre = num_pre[tidy];
                int start = pre_start[tidy];
 
@@ -109,7 +110,7 @@ class NDComponent(object):
                    {
                      col = buffer_length + col;
                    }
-                                 
+
                    input[tidy][tidx] += pre_buffer[col*ld + pre[start+i]];
                }
             }
@@ -152,11 +153,10 @@ class NDComponent(object):
         //can be improved
         """
         mod = SourceModule(template % {"num_comps": num_comps,
-                                       "type": dtype_to_ctype(dtype)}, 
+                                       "type": dtype_to_ctype(dtype)},
                            options=self.compile_options)
         func = mod.get_function("sum_input")
         func.prepare('PPPPPPiii')
         self.__block_sum = (32, 32, 1)
-        self.__grid_sum = ((num_comps - 1) / 32 + 1, 1)
+        self.__grid_sum = ((num_comps - 1) // 32 + 1, 1)
         return func
-

@@ -8,7 +8,7 @@ from pycuda.tools import dtype_to_ctype
 import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
-from BaseSynapseModel import BaseSynapseModel
+from neurokernel.LPU.NDComponents.SynapseModels.BaseSynapseModel import BaseSynapseModel
 
 #This class assumes a single pre synaptic connection per component instance
 class PowerGPotGPot(BaseSynapseModel):
@@ -16,7 +16,7 @@ class PowerGPotGPot(BaseSynapseModel):
     updates = ['g']
     params = ['threshold', 'slope', 'power', 'saturation']
     internals = OrderedDict([])
-    
+
     def __init__(self, params_dict, access_buffers, dt,
                  LPU_id=None, debug=False, cuda_verbose=False):
         if cuda_verbose:
@@ -26,29 +26,29 @@ class PowerGPotGPot(BaseSynapseModel):
 
         self.debug = debug
         self.dt = dt
-        self.num_comps = params_dict['threshold'].size
-        self.dtype = params_dict['threshold'].dtype
+        self.num_comps = params_dict[self.params[0]].size
+        self.dtype = params_dict[self.params[0]].dtype
         self.LPU_id = LPU_id
         self.nsteps = 1
         self.ddt = dt/self.nsteps
-        
+
         self.params_dict = params_dict
         self.access_buffers = access_buffers
-        
+
         self.internal_states = {
             c: garray.zeros(self.num_comps, dtype = self.dtype)+self.internals[c] \
             for c in self.internals}
-        
+
         self.inputs = {
             k: garray.empty(self.num_comps, dtype = self.access_buffers[k].dtype)\
             for k in self.accesses}
-        
+
         self.retrieve_buffer_funcs = {}
         for k in self.accesses:
             self.retrieve_buffer_funcs[k] = \
                 self.get_retrieve_buffer_func(
                     k, dtype = self.access_buffers[k].dtype)
-        
+
         dtypes = {'dt': self.dtype}
         dtypes.update({k: self.inputs[k].dtype for k in self.accesses})
         dtypes.update({k: self.params_dict[k].dtype for k in self.params})
@@ -68,10 +68,10 @@ class PowerGPotGPot(BaseSynapseModel):
             [self.params_dict[k].gpudata for k in self.params]+\
             [self.internal_states[k].gpudata for k in self.internals]+\
             [update_pointers[k] for k in self.updates])
-                
+
     def get_update_template(self):
         template = """
-__global__ void PowerGPotGPot(int num_comps, %(dt)s dt, int steps,
+__global__ void update(int num_comps, %(dt)s dt, int steps,
                        %(V)s* g_V, %(threshold)s* g_threshold,
                        %(slope)s* g_slope, %(power)s* g_power,
                        %(saturation)s* g_saturation,
@@ -93,7 +93,7 @@ __global__ void PowerGPotGPot(int num_comps, %(dt)s dt, int steps,
         slope = g_slope[i];
         power = g_power[i];
         saturation = g_saturation[i];
-        
+
         g_g[i] = fmin%(fletter)s(saturation,
                     slope*pow%(fletter)s(fmax(0.0,V-threshold),power));
     }
@@ -103,14 +103,14 @@ __global__ void PowerGPotGPot(int num_comps, %(dt)s dt, int steps,
 
     def get_update_func(self, dtypes):
         type_dict = {k: dtype_to_ctype(dtypes[k]) for k in dtypes}
-        type_dict.update({'fletter': 'f' if type_dict['threshold'] == 'float' else ''})
+        type_dict.update({'fletter': 'f' if type_dict[self.params[0]] == 'float' else ''})
         mod = SourceModule(self.get_update_template() % type_dict,
                            options=self.compile_options)
-        func = mod.get_function("PowerGPotGPot")
+        func = mod.get_function("update")
         func.prepare('i'+np.dtype(dtypes['dt']).char+'i'+'P'*(len(type_dict)-2))
         func.block = (256,1,1)
         func.grid = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
-                         (self.num_comps-1) / 256 + 1), 1)
+                         (self.num_comps-1) // 256 + 1), 1)
         return func
 
 
@@ -156,7 +156,7 @@ if __name__ == '__main__':
 
     G = nx.MultiDiGraph()
 
-    G.add_node('synapse0', {
+    G.add_node('synapse0', **{
                'class': 'PowerGPotGPot',
                'name': 'PowerGPotGPot',
                'gmax': 0.4,
@@ -179,4 +179,3 @@ if __name__ == '__main__':
     man.spawn()
     man.start(steps=args.steps)
     man.wait()
-

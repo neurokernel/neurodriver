@@ -8,38 +8,38 @@ from pycuda.tools import dtype_to_ctype
 import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
-from BaseMembraneModel import BaseMembraneModel
+from neurokernel.LPU.NDComponents.MembraneModels.BaseMembraneModel import BaseMembraneModel
 
 class MorrisLecar(BaseMembraneModel):
     params = ['V1', 'V2', 'V3', 'V4', 'phi', 'offset',
               'V_L', 'V_Ca', 'V_K', 'g_L', 'g_Ca', 'g_K']
     internals = OrderedDict([('internalV', -70.0), ('n', 0.3525)])
-    
+
     def __init__(self, params_dict, access_buffers, dt, LPU_id=None,
                  debug=False, cuda_verbose=False):
         if cuda_verbose:
             self.compile_options = ['--ptxas-options=-v']
         else:
             self.compile_options = []
-            
-        self.num_comps = params_dict['V1'].size
+
+        self.num_comps = params_dict[self.params[0]].size
         self.params_dict = params_dict
         self.access_buffers = access_buffers
         self.dt = np.double(dt)
         self.steps = max(int(round(dt / 1e-5)), 1)
         self.debug = debug
         self.LPU_id = LPU_id
-        self.dtype = params_dict['V1'].dtype
+        self.dtype = params_dict[self.params[0]].dtype
         self.ddt = dt / self.steps
 
         self.internal_states = {
             c: garray.zeros(self.num_comps, dtype = self.dtype)+self.internals[c] \
             for c in self.internals}
-        
+
         self.inputs = {
             k: garray.empty(self.num_comps, dtype = self.access_buffers[k].dtype)\
             for k in self.accesses}
-        
+
         dtypes = {'dt': self.dtype}
         dtypes.update({k: self.inputs[k].dtype for k in self.accesses})
         dtypes.update({k: self.params_dict[k].dtype for k in self.params})
@@ -58,12 +58,12 @@ class MorrisLecar(BaseMembraneModel):
         cuda.memcpy_dtod(self.internal_states['n'].gpudata,
                          self.params_dict['initn'].gpudata,
                          self.params_dict['initn'].nbytes)
-        
+
 
     def run_step(self, update_pointers, st=None):
         for k in self.inputs:
             self.sum_in_variable(k, self.inputs[k], st=st)
-            
+
         self.update_func.prepared_async_call(
             self.update_func.grid, self.update_func.block, st,
             self.num_comps, self.ddt*1000, self.steps,
@@ -116,7 +116,7 @@ morris_lecar_multiple(int num_comps, %(dt)s dt, int nsteps,
     %(g_L)s g_L;
     %(g_Ca)s g_Ca;
     %(g_K)s g_K;
-    
+
     for(int k = tid; k < num_comps; k += total_threads)
     {
         V = g_internalV[k];
@@ -134,7 +134,7 @@ morris_lecar_multiple(int num_comps, %(dt)s dt, int nsteps,
         g_Ca = g_g_Ca[k];
         g_K = g_g_K[k];
         I = g_I[k];
-        
+
         for(int i = 0; i < nsteps; ++i)
         {
             dn = compute_n(V, n, V3, V4, phi);
@@ -144,7 +144,7 @@ morris_lecar_multiple(int num_comps, %(dt)s dt, int nsteps,
             V += dV * dt;
             n += dn * dt;
         }
-        
+
         g_V[k] = V;
         g_internalV[k] = V;
         g_n[k] = n;
@@ -155,14 +155,14 @@ morris_lecar_multiple(int num_comps, %(dt)s dt, int nsteps,
 
     def get_update_func(self, dtypes):
         type_dict = {k: dtype_to_ctype(dtypes[k]) for k in dtypes}
-        type_dict.update({'fletter': 'f' if type_dict['V1'] == 'float' else ''})
+        type_dict.update({'fletter': 'f' if type_dict[self.params[0]] == 'float' else ''})
         mod = SourceModule(self.get_update_template() % type_dict,
                            options=self.compile_options)
         func = mod.get_function("morris_lecar_multiple")
         func.prepare('i'+np.dtype(dtypes['dt']).char+'i'+'P'*(len(type_dict)-2))
         func.block = (256,1,1)
         func.grid = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
-                         (self.num_comps-1) / 256 + 1), 1)
+                         (self.num_comps-1) // 256 + 1), 1)
         return func
 
 
@@ -208,7 +208,7 @@ if __name__ == '__main__':
 
     G = nx.MultiDiGraph()
 
-    G.add_node('neuron0', {
+    G.add_node('neuron0', **{
                'class': 'MorrisLecar',
                'name': 'MorrisLecar',
                'V1': -20.,
@@ -239,4 +239,3 @@ if __name__ == '__main__':
     man.spawn()
     man.start(steps=args.steps)
     man.wait()
-

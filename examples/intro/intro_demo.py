@@ -47,7 +47,7 @@ def main():
         lpu_file_1 = './data/generic_lpu_1.gexf.gz'
         comp_dict_0, conns_0 = LPU.lpu_parser(lpu_file_0)
         comp_dict_1, conns_1 = LPU.lpu_parser(lpu_file_1)
-        
+
         fl_input_processor_0 = FileInputProcessor('./data/generic_lpu_0_input.h5')
         fl_output_processor_0 = FileOutputProcessor(
                     [('V',None),('spike_state',None)],
@@ -64,7 +64,7 @@ def main():
         fl_output_processor_1 = FileOutputProcessor(
                     [('V',None),('spike_state',None)],
                     'generic_lpu_1_%s_output.h5' % out_name, sample_interval=1)
-                    
+
         lpu_1_id = 'lpu_1'
         man.add(LPU, lpu_1_id, dt, comp_dict_1, conns_1,
                     input_processors = [fl_input_processor_1],
@@ -168,4 +168,3 @@ def main():
 
 if __name__=='__main__':
     main()
-

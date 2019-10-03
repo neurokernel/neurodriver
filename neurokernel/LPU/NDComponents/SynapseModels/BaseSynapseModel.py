@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from abc import ABCMeta, abstractmethod, abstractproperty
+from future.utils import with_metaclass
 
 import numpy as np
 from pycuda.tools import dtype_to_ctype
@@ -9,8 +10,8 @@ from pycuda.compiler import SourceModule
 
 from neurokernel.LPU.NDComponents.NDComponent import NDComponent
 
-class BaseSynapseModel(NDComponent):
-    __metaclass__ = ABCMeta
+class BaseSynapseModel(with_metaclass(ABCMeta, NDComponent)):
+    # __metaclass__ = ABCMeta
 
     accesses = ['V']
     updates = ['g']
@@ -40,7 +41,7 @@ __global__ void retrieve(%(type)s* buffer, int buffer_ld, int current,
 {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int total_threads = gridDim.x * blockDim.x;
-    
+
     int dl, col;
     for(int i = tid; i < n_items; i += total_threads)
     {
@@ -64,8 +65,5 @@ __global__ void retrieve(%(type)s* buffer, int buffer_ld, int current,
         func.prepare('PiiiPPPPPi')
         func.block = (256,1,1)
         func.grid = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
-                         (self.num_comps-1) / 256 + 1), 1)
+                         (self.num_comps-1) // 256 + 1), 1)
         return func
-    
-    
-
