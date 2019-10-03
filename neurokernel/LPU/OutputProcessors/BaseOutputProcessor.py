@@ -8,7 +8,7 @@ import pycuda.elementwise as elementwise
 from neurokernel.LPU.LPU import LPU
 
 class BaseOutputProcessor(object):
-    def __init__(self, var_list, sample_interval=1):
+    def __init__(self, var_list, sample_interval = 1):
         # var_list should be a list of (variable, uids)
         # Invalid uids will be ignored
         # if uids is None, the entire variable will be outputted
@@ -50,7 +50,6 @@ class BaseOutputProcessor(object):
                                           buff.dtype.itemsize)
 
                 self.get_inds(src_mem, self._d_output[var],self.src_inds[var])
-                d['output'] = self._d_output[var].get()
             self.process_output()
 
     def _pre_run(self):
@@ -82,6 +81,13 @@ class BaseOutputProcessor(object):
                                                v_dict['buffer'].dtype)
             d['output']=np.zeros(len(d['uids']), v_dict['buffer'].dtype)
         self.pre_run()
+
+    def get_output_gpu(self, var):
+        return self._d_output[var]
+
+    def get_output(self, var):
+        self._d_output[var].get(self.variables[var]['output'])
+        return self.variables[var]['output']
 
     # Should be implemented by child class
     def pre_run(self):
