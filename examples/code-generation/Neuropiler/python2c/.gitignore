@@ -1,0 +1,5 @@
+*.pyc
+*.out
+*.exe
+*.h.gch
+c_tests/
