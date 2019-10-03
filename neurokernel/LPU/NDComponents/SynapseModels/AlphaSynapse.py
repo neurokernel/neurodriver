@@ -14,10 +14,10 @@ class AlphaSynapse(BaseSynapseModel):
     def get_update_template(self):
         # The following kernel assumes a maximum of one input connection
         # per neuron
-        if self.nsteps == 1:
+        if self.steps == 1:
             # this is a kernel that runs 1 step internally for each self.dt
             template = """
-__global__ void update(int num_comps, %(dt)s dt, int steps,
+__global__ void update(int num_comps, %(dt)s dt, int nsteps,
                        %(spike_state)s* g_spike_state,
                        %(gmax)s* g_gmax, %(ar)s* g_ar,
                        %(ad)s* g_ad,
@@ -47,7 +47,7 @@ __global__ void update(int num_comps, %(dt)s dt, int steps,
 
         new_z = fmax( 0., z + ddt*dz );
         new_dz = dz + ddt*d2z;
-        if( spike_state )
+        if( spike_state>0.0 )
             new_dz += ar*ad;
         new_d2z = -( ar+ad )*dz - ar*ad*z;
 
@@ -63,7 +63,7 @@ __global__ void update(int num_comps, %(dt)s dt, int steps,
             # this is a kernel that runs self.nstep steps internally for each self.dt
             # see the "k" for loop
             template = """
-__global__ void update(int num_comps, %(dt)s dt, int steps,
+__global__ void update(int num_comps, %(dt)s dt, int nsteps,
                        %(spike_state)s* g_spike_state,
                        %(gmax)s* g_gmax, %(ar)s* g_ar,
                        %(ad)s* g_ad,
@@ -73,6 +73,7 @@ __global__ void update(int num_comps, %(dt)s dt, int steps,
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int total_threads = gridDim.x * blockDim.x;
 
+    %(dt)s ddt = dt*1000.; // s to ms
     %(spike_state)s spike_state;
     %(gmax)s gmax;
     %(ar)s ar;
@@ -92,9 +93,9 @@ __global__ void update(int num_comps, %(dt)s dt, int steps,
 
         for(int k = 0; k < nsteps; ++k)
         {
-            new_z = fmax( 0., z + dt*dz );
-            new_dz = dz + dt*d2z;
-            if(k == 0 && spike_state)
+            new_z = fmax( 0., z + ddt*dz );
+            new_dz = dz + ddt*d2z;
+            if(k == 0 && (spike_state>0.0))
                 new_dz += ar*ad;
             new_d2z = -( ar+ad )*dz - ar*ad*z;
 
@@ -155,13 +156,13 @@ if __name__ == '__main__':
 
     uids = np.array(["synapse0"], dtype='S')
 
-    spike_state = np.zeros((steps, 1), dtype=np.int32)
+    spike_state = np.zeros((steps, 1), dtype=np.float64)
     spike_state[np.nonzero((t - np.round(t / 0.04) * 0.04) == 0)[0]] = 1
 
     with h5py.File('input_spike.h5', 'w') as f:
         f.create_dataset('spike_state/uids', data=uids)
         f.create_dataset('spike_state/data', (steps, 1),
-                         dtype=np.int32,
+                         dtype=np.float64,
                          data=spike_state)
 
     man = core.Manager()

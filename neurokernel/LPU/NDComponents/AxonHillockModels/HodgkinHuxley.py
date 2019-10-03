@@ -18,6 +18,7 @@ class HodgkinHuxley(BaseAxonHillockModel):
 #define EXP exp%(fletter)s
 #define POW pow%(fletter)s
 #define ABS fabs%(fletter)s
+#define MIN fmin%(fletter)s
 
 __global__ void update(
     int num_comps,
@@ -48,7 +49,7 @@ __global__ void update(
 
     for(int i = tid; i < num_comps; i += total_threads)
     {
-        spike = 0;
+        spike = 0.0;
         V = g_internalV[i];
         Vprev1 = g_internalVprev1[i];
         Vprev2 = g_internalVprev2[i];
@@ -93,7 +94,7 @@ __global__ void update(
         g_internalV[i] = V;
         g_internalVprev1[i] = Vprev1;
         g_internalVprev2[i] = Vprev2;
-        g_spike_state[i] = (spike > 0);
+        g_spike_state[i] = MIN(spike, 1.0);
     }
 }
 """

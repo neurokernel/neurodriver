@@ -44,7 +44,7 @@ class MorrisLecar(BaseMembraneModel):
         dtypes.update({k: self.inputs[k].dtype for k in self.accesses})
         dtypes.update({k: self.params_dict[k].dtype for k in self.params})
         dtypes.update({k: self.internal_states[k].dtype for k in self.internals})
-        dtypes.update({k: self.dtype if not k == 'spike_state' else np.int32 for k in self.updates})
+        dtypes.update({k: self.dtype for k in self.updates})
         self.update_func = self.get_update_func(dtypes)
 
     def pre_run(self, update_pointers):
