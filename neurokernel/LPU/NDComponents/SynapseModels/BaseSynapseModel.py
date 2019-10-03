@@ -116,7 +116,7 @@ __global__ void retrieve(%(type)s* buffer, int buffer_ld, int current,
     def run_step(self, update_pointers, st = None):
         # retrieve all buffers into a linear array
         for k in self.inputs:
-            self.sum_in_variable(k, self.inputs[k], st=st)
+            self.retrieve_buffer(k, st = st)
 
         self.update_func.prepared_async_call(
             self.update_func.grid, self.update_func.block, st,
