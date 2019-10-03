@@ -885,8 +885,8 @@ class LPU(Module):
 
         data_gpot = np.zeros(len(self.in_gpot_uids)+len(self.out_gpot_uids),
                              self.default_dtype)
-        data_spike = np.zeros(len(self.in_spk_uids)+len(self.out_spk_uids)
-                              ,np.default_dtype)
+        data_spike = np.zeros(len(self.in_spk_uids)+len(self.out_spk_uids),
+                              self.default_dtype)
 
         if self.print_timing:
             start = time.time()
