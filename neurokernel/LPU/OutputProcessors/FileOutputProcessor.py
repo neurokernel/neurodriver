@@ -33,13 +33,17 @@ class FileOutputProcessor(BaseOutputProcessor):
                                            d['output'].dtype)
         self.count = 0
 
+    def get_output_array(self, var):
+        return int(self.cache[var].gpudata)+\
+               self.count*self.cache[var].shape[1]*self.cache[var].dtype.itemsize
+
     def process_output(self):
-        for var, d in self.variables.items():
-            data = self.get_output_gpu(var)
-            cuda.memcpy_dtod(
-                int(self.cache[var].gpudata)+\
-                self.count*self.cache[var].shape[1]*self.cache[var].dtype.itemsize,
-                data.gpudata, data.nbytes)
+        # for var, d in self.variables.items():
+        #     data = self.get_output_gpu(var)
+        #     cuda.memcpy_dtod(
+        #         int(self.cache[var].gpudata)+\
+        #         self.count*self.cache[var].shape[1]*self.cache[var].dtype.itemsize,
+        #         data.gpudata, data.nbytes)
         self.count += 1
 
         if self.count == self.cache_length:

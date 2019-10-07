@@ -22,4 +22,4 @@ class StepInputProcessor(BaseInputProcessor):
                 self.LPU_obj.time < self.stop)
 
     def post_run(self):
-        pass
+        super(StepInputProcessor, self).post_run()

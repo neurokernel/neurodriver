@@ -998,14 +998,22 @@ class LPU(Module):
         for p in self.output_processors:
             p.LPU_obj = self
             p._pre_run()
+
         if self.print_timing:
             cuda.Context.synchronize()
             self.log_info('Elapsed time for prerun input and output processors: {:.3f} seconds'.format( time.time()-start))
+
+        self.memory_manager.precompile_fill_zeros()
 
         if self.control_inteface: self.control_inteface.register(self)
         if self.print_timing:
             cuda.Context.synchronize()
             self.log_info("Elapsed time for LPU pre_run: {:.3f} seconds".format(time.time()-start))
+
+        if self.print_timing:
+            self.timing = {'read_input': 0, 'input_processors': 0, 'inject_input': 0,
+                           'model_run': 0, 'output_processors': 0,
+                           'extract_output': 0, 'total': 0}
 
     # TODO: optimize the order of self.out_port_conns beforehand
     def _setup_output_ports(self):
@@ -1203,18 +1211,33 @@ class LPU(Module):
         # Cycle through IO processors as well
         for p in self.input_processors: p.post_run()
         for p in self.output_processors: p.post_run()
+        if self.print_timing:
+            print('time spent on:', self.timing)
 
     def run_step(self):
         super(LPU, self).run_step()
 
 
         # Update input ports
+        if self.print_timing:
+            start_all = time.time()
+            start = time.time()
         self._read_LPU_input()
+        if self.print_timing:
+            cuda.Context.synchronize()
+            self.timing['read_input'] += time.time()-start
 
 
         # Fetch updated input if available from all input processors
+        if self.print_timing:
+            start = time.time()
         for p in self.input_processors: p.run_step()
+        if self.print_timing:
+            cuda.Context.synchronize()
+            self.timing['input_processors'] += time.time()-start
 
+        if self.print_timing:
+            start = time.time()
         for model in self.exec_order:
             if model in self.model_var_inj:
                 for var in self.model_var_inj[model]:
@@ -1222,8 +1245,13 @@ class LPU(Module):
                     self.memory_manager.fill_zeros(model='Input', variable=var)
                     for p in self.input_processors:
                         p.inject_input(var)
+        if self.print_timing:
+            cuda.Context.synchronize()
+            self.timing['inject_input'] += time.time()-start
 
         # Call run_step of components
+        if self.print_timing:
+            start = time.time()
         for model in self.exec_order:
             # Get correct position in buffer for update
             update_pointers = {}
@@ -1238,14 +1266,27 @@ class LPU(Module):
                                        (buffer_current_plus_one*buff.ld+\
                                         shift)*buff.dtype.itemsize
             self.components[model].run_step(update_pointers)
+        if self.print_timing:
+            cuda.Context.synchronize()
+            self.timing['model_run'] += time.time()-start
 
         # Process output processors
+        if self.print_timing:
+            start = time.time()
         for p in self.output_processors: p.run_step()
+        if self.print_timing:
+            cuda.Context.synchronize()
+            self.timing['output_processors'] += time.time()-start
 
         # Check for transforms
 
         # Update output ports
+        if self.print_timing:
+            start = time.time()
         self._extract_output()
+        if self.print_timing:
+            cuda.Context.synchronize()
+            self.timing['extract_output'] += time.time()-start
 
         # Step through buffers
         self.memory_manager.step()
@@ -1254,6 +1295,9 @@ class LPU(Module):
 
         # Instruct Control inteface to process any pending commands
         if self.control_inteface: self.control_inteface.process_commands()
+        if self.print_timing:
+            cuda.Context.synchronize()
+            self.timing['total'] += time.time()-start_all
 
     def _read_LPU_input(self):
         """
