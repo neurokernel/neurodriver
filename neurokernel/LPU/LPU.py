@@ -204,7 +204,7 @@ class LPU(Module):
         """
 
         comp_dict = {}
-        comps = graph.node.items()
+        comps = graph.nodes.items()
 
         all_component_types = list(set([comp[class_key] for uid, comp in comps]))
 
