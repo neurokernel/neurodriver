@@ -57,17 +57,16 @@ class BaseOutputProcessor(object):
                     dest_mem = self._d_output[var].gpudata
                 self.get_inds(var, src_mem, dest_mem)
             self.process_output()
+
+        if 'spike_state' in self.variables:
+            var = 'spike_state'
+            buff = self.memory_manager.get_buffer(var)
+            src_mem = int(buff.gpudata)+buff.current*buff.ld*buff.dtype.itemsize
+            dest_mem = self.get_output_array(var)
+            if dest_mem is None:
+                dest_mem = self._d_output[var].gpudata
+            self.get_inds(var, src_mem, dest_mem)
             self.process_spike_output()
-        else:
-            if 'spike_state' in self.variables:
-                var = 'spike_state'
-                buff = self.memory_manager.get_buffer(var)
-                src_mem = int(buff.gpudata)+buff.current*buff.ld*buff.dtype.itemsize
-                dest_mem = self.get_output_array(var)
-                if dest_mem is None:
-                    dest_mem = self._d_output[var].gpudata
-                self.get_inds(var, src_mem, dest_mem)
-                self.process_spike_output()
 
     def get_output_array(self, var):
         return None
