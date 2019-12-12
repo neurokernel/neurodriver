@@ -123,14 +123,15 @@ class FileOutputProcessor(BaseOutputProcessor):
             t, index = np.where(self.cache[var].get()!=0)
             t = t*self.sim_dt
             nspikes = index.size
-            self.h5file[var+'/data/time'].resize(
-                    (self.h5file[var + '/data/time'].shape[0] + nspikes,))
-            self.h5file[var+'/data/index'].resize(
-                    (self.h5file[var + '/data/index'].shape[0] + nspikes,))
+            if nspikes:
+                self.h5file[var+'/data/time'].resize(
+                        (self.h5file[var + '/data/time'].shape[0] + nspikes,))
+                self.h5file[var+'/data/index'].resize(
+                        (self.h5file[var + '/data/index'].shape[0] + nspikes,))
 
-            self.h5file[var + '/data/time'][-nspikes:] = t+self.stime_shift
-            self.h5file[var + '/data/index'][-nspikes:] = index.astype(np.int32)
-            self.h5file.flush()
+                self.h5file[var + '/data/time'][-nspikes:] = t+self.stime_shift
+                self.h5file[var + '/data/index'][-nspikes:] = index.astype(np.int32)
+                self.h5file.flush()
             self.stime_shift += self.cache_length*self.sim_dt
             self.scount = 0
 
@@ -146,11 +147,12 @@ class FileOutputProcessor(BaseOutputProcessor):
             t, index = np.where(self.cache[var].get()[:self.scount,:]!=0)
             t *= self.sim_dt
             nspikes = index.size
-            self.h5file[var+'/data/time'].resize(
-                    (self.h5file[var + '/data'].shape[0] + nspikes,))
-            self.h5file[var+'/data/index'].resize(
-                    (self.h5file[var + '/data'].shape[0] + nspikes,))
-            self.h5file[var + '/data/time'][-nspikes:] = t+self.stime_shift
-            self.h5file[var + '/data/index'][-nspikes:] = index.astype(np.int32)
+            if nspikes:
+                self.h5file[var+'/data/time'].resize(
+                        (self.h5file[var + '/data'].shape[0] + nspikes,))
+                self.h5file[var+'/data/index'].resize(
+                        (self.h5file[var + '/data'].shape[0] + nspikes,))
+                self.h5file[var + '/data/time'][-nspikes:] = t+self.stime_shift
+                self.h5file[var + '/data/index'][-nspikes:] = index.astype(np.int32)
         self.h5file.flush()
         self.h5file.close()
