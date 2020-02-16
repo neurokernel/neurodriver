@@ -161,191 +161,26 @@ class LPU(Module):
         for model in models_to_be_deleted:
             del comp_dict[model]
 
-        # Assume zero delay by default
+        # timing each part of parsing
+        if self.cfg.print_timing:
+            start = time.time()
+
+        # Delay for each variable. Assume zero delay by default
         self.variable_delay_map = {}
 
         # Generate a uid to model map of components
         self.uid_model_map = {}
-        for model,attribs in iteritems(comp_dict):
+        for model,attribs in comp_dict.items():
             for i,uid in enumerate(attribs[uid_key]):
                 self.uid_model_map[uid] = model
 
-
-        # Map from post synaptic component to aggregator uid
-        agg_map = {}
-        agg = {}
-
-        #start = time.time()
-
-        conns = []
-        self.in_port_vars = {}
-        self.out_port_conns = []
-        comp_uid_order = {}
-        for model, attribs in comp_dict.items():
-            comp_uid_order[model] = {uid: i for i, uid in enumerate(attribs[uid_key])}
-
-        if self.print_timing:
+        if self.cfg.print_timing:
             self.log_info("Elapsed time for processing comp_dict: {:.3f} seconds".format(time.time()-start))
             start = time.time()
-        # Process connections between components, remove inconsitent connections
-        # calculate required delays, infer variable if required
-        in_port_vars_set = {}
-        reverse_set = ['reverse','Vr','VR','reverse_potential']
 
-        comp_updates = {name: v['updates'] if not name=='Port' else [] \
-                        for name, v in self._comps.items()}
-        comp_updates.update({'Port': []})
-        comp_accesses = {name: v['accesses'] if not name=='Port' else [] \
-                         for name, v in self._comps.items()}
-        comp_accesses.update({'Port': []})
-
-        for pre, post, data in conn_list:
-            try:
-                pre_model = self.uid_model_map[pre]
-            except KeyError:
-                continue
-            try:
-                post_model = self.uid_model_map[post]
-            except KeyError:
-                continue
-
-            pre_updates = comp_updates[pre_model]
-            pre_updates_set = set(pre_updates)
-            post_accesses = comp_accesses[post_model]
-            post_accesses_set = set(post_accesses)
-            pre_post_intersection = pre_updates_set&post_accesses_set
-            g_in_pre_update = 'g' in pre_updates_set # not so useful
-            V_in_pre_update = 'V' in pre_updates_set
-
-            # Update delay
-            delay = max(int(round((data['delay']/dt))) \
-                    if 'delay' in data else 0, 1) - 1
-            data['delay'] = delay
-
-            if post_model == 'Aggregator':
-                agg_map[post] = post
-                reverse_key = None
-                for k in reverse_set:
-                    if k in data:
-                        reverse_key = k
-                        reverse = data[reverse_key]
-                        break
-                if reverse_key is None:
-                    # else look in the attibutes of the synapse
-                    s = (set(['reverse','Vr','VR','reverse_potential'])&
-                         set(comp_dict[pre_model]))
-                    if s: reverse_key = s.pop()
-                    if reverse_key:
-                        reverse = comp_dict[pre_model][reverse_key][\
-                                comp_uid_order[pre_model][pre]]
-                        if g_in_pre_update:
-                            data['reverse'] = reverse
-                    else:
-                        if g_in_pre_update:
-                            self.log_info('Assuming reverse potential ' +
-                                          'to be zero for connection from' +
-                                          '%s to %s'%(pre,post))
-                            data['reverse'] = 0
-                        reverse = 0
-
-                if post in agg:
-                    if g_in_pre_update:
-                        agg[post].append({'pre':pre,'reverse':reverse,
-                                          'variable':'g'})
-                    elif V_in_pre_update:
-                        agg[post].append({'pre':pre, 'variable':'V'})
-                else:
-                    # Make sure aggregator has access to postsynaptic voltage
-                    if g_in_pre_update:
-                        agg[post] = [{'pre':pre,'reverse':reverse,'variable':'g'}]
-                    elif V_in_pre_update:
-                        agg[post] = [{'pre':pre,'variable':'V'}]
-
-                if g_in_pre_update:
-                    agg[post][-1].update(data)
-                    self.variable_delay_map['g'] = max(data['delay'],
-                                    self.variable_delay_map['g'] if 'g' in \
-                                    self.variable_delay_map else 0)
-
-
-            # Ensure consistency
-            # Insert Aggregator between g->V if required. Assume 'reverse' or
-            # 'Vr' or 'VR' or 'reverse_potential' id present as a param in the
-            # synapse in that case
-            if not pre_post_intersection:
-                if g_in_pre_update and 'I' in post_accesses_set:
-                    # start2 = time.time()
-                    # First look for reverse in the attributes of the edge
-                    reverse_key = None
-                    for k in reverse_set:
-                        if k in data:
-                            reverse_key = k
-                            reverse = data[reverse_key]
-                            break
-                    if reverse_key is None:
-                        # else look in the attibutes of the synapse
-                        s = (set(['reverse','Vr','VR','reverse_potential'])&
-                             set(comp_dict[pre_model]))
-                        if s: reverse_key = s.pop()
-                        if reverse_key:
-                            reverse = comp_dict[pre_model][reverse_key][\
-                                    comp_uid_order[pre_model][pre]]
-                        else:
-                            self.log_info('Assuming reverse potential ' +
-                                          'to be zero for connection from' +
-                                          '%s to %s'%(pre,post))
-                            reverse = 0
-
-                    data.update({'pre':pre,'reverse':reverse,
-                                 'variable':'g'})
-                    if post in agg:
-                        agg[post].append(data)
-                    else:
-                        # Make sure aggregator has access to postsynaptic voltage
-                        agg[post] = [{'pre':post,'variable':'V'},
-                                     data]
-                    if post not in agg_map:
-                        uid = self.uid_generator.generate_uid()
-                        agg_map[post] = uid
-                    self.variable_delay_map['g'] = max(data['delay'],
-                                    self.variable_delay_map['g'] if 'g' in \
-                                    self.variable_delay_map else 0)
-
-                elif pre_model == 'Port':
-                    if not 'variable' in data:
-                        data['variable'] = post_accesses[0]
-                    if not data['variable'] in self.in_port_vars:
-                        self.in_port_vars[data['variable']] = []
-                        in_port_vars_set[data['variable']] = set()
-                    if pre not in in_port_vars_set[data['variable']]:
-                        self.in_port_vars[data['variable']].append(pre)
-                        in_port_vars_set[data['variable']].add(pre)
-                    conns.append((pre, post, data))
-                    self.variable_delay_map[data['variable']] = max(data['delay'],
-                            self.variable_delay_map[data['variable']] if \
-                            data['variable'] in self.variable_delay_map else 0)
-                elif post_model == 'Port':
-                    if not 'variable' in data:
-                        data['variable'] = pre_updates[0]
-                    self.out_port_conns.append((pre, post, data['variable']))
-                else:
-                    self.log_info("Ignoring connection %s -> %s"%(pre,post))
-                continue
-
-            var = data['variable'] if 'variable' in data else None
-            if not var:
-                var = pre_post_intersection.pop()
-            elif not (var in pre_updates_set and var in post_accesses_set):
-                continue
-            data['variable'] = var
-            self.variable_delay_map[data['variable']] = max(data['delay'],
-                            self.variable_delay_map[data['variable']] if \
-                            data['variable'] in self.variable_delay_map else 0)
-            # connection to Aggregator will be added later
-            if 'Aggregator' not in post_model:
-                conns.append((pre,post,data))
-
-        if self.print_timing:
+        # process conn_list, update variable_delay_map as needed
+        agg_map, agg, conns, self.in_port_vars, self.out_port_conns = self._process_conn_list(comp_dict, conn_list)
+        if self.cfg.print_timing:
             self.log_info("Elapsed time for processing conn_list: {:.3f} seconds".format(time.time()-start))
             start = time.time()
 
@@ -374,12 +209,11 @@ class LPU(Module):
             # in conn_list with 'variable' 'V' is the same neuron as post
             if post == [tmp['pre'] for tmp in conn_list if tmp['variable']=='V'][0]:
                 conns.append((uid,post,{'variable':'I', 'delay': 0}))
-        if self.print_timing:
+        if self.cfg.print_timing:
             self.log_info("Elapsed time for processing aggregator: {:.3f} seconds".format(time.time()-start))
             start = time.time()
 
         self.conn_dict = {}
-
         # RePackage connections
         for (pre, post, data) in conns:
             if not post in self.conn_dict:
@@ -391,7 +225,7 @@ class LPU(Module):
             self.conn_dict[post][var]['pre'].append(pre)
             for k in data: self.conn_dict[post][var][k].append(data[k])
 
-        if self.print_timing:
+        if self.cfg.print_timing:
             self.log_info("Elapsed time for repackaging connections: {:.3f} seconds".format(time.time()-start))
             start = time.time()
 
@@ -400,8 +234,8 @@ class LPU(Module):
             if model == 'Port':
                 continue
             for var in self._comps[model]['accesses']:
-                if ((not uid in self.conn_dict or not var in self.conn_dict[uid])):
-                    pre = self.uid_generator.generate_uid(input=True)
+                if ((uid not in self.conn_dict or var not in self.conn_dict[uid])):
+                    pre = self._uid_generator.generate_uid(input=True)
                     if not var in self.variable_delay_map:
                         self.variable_delay_map[var]=0
                     if not uid in self.conn_dict: self.conn_dict[uid] = {}
@@ -413,10 +247,10 @@ class LPU(Module):
                     if not 'Input' in comp_dict:
                         comp_dict['Input'] = {}
                     if not var in comp_dict['Input']:
-                        comp_dict['Input'][var] = {self.uid_key: []}
-                    comp_dict['Input'][var][self.uid_key].append(pre)
+                        comp_dict['Input'][var] = {self._uid_key: []}
+                    comp_dict['Input'][var][self._uid_key].append(pre)
 
-        if self.print_timing:
+        if self.cfg.print_timing:
             self.log_info("Elapsed time for adding connections for component with no incoming connections: {:.3f} seconds".format(time.time()-start))
             start = time.time()
 
@@ -445,7 +279,7 @@ class LPU(Module):
             order = np.argsort([self.uid_ind_map['Port'][uid] for uid in uids])
             self.in_port_vars[var] = [uids[i] for i in order]
 
-        if self.print_timing:
+        if self.cfg.print_timing:
             self.log_info("Elapsed time for optimizing ordering: {:.3f} seconds".format(time.time()-start))
 
         # Try to figure out order of stepping through components
@@ -475,7 +309,7 @@ class LPU(Module):
                     else:
                         deps[i].append(j)
 
-
+        # execute models in by dependency
         self.exec_order = []
         for i, model in enumerate(models):
             if not model in self.exec_order: self.exec_order.append(model)
@@ -513,29 +347,29 @@ class LPU(Module):
                     self.model_var_inj[self.exec_order[-1]] = []
                 self.model_var_inj[self.exec_order[-1]].append(var)
 
-        if self.print_timing:
+        if self.cfg.print_timing:
             start = time.time()
         # Get selectors of input ports:
         sel_in_gpot, self.in_gpot_uids = self.extract_in_gpot(comp_dict,
-                                                              self.uid_key)
+                                                              self._uid_key)
         self.sel_in_gpot = Selector(','.join(sel_in_gpot))
         sel_in_spk, self.in_spk_uids = self.extract_in_spk(comp_dict,
-                                                           self.uid_key)
+                                                           self._uid_key)
         self.sel_in_spk = Selector(','.join(sel_in_spk))
         sel_in = Selector.add(self.sel_in_gpot, self.sel_in_spk)
 
         # Get selectors of output neurons:
         sel_out_gpot, self.out_gpot_uids = self.extract_out_gpot(comp_dict,
-                                                                 self.uid_key)
+                                                                 self._uid_key)
         self.sel_out_gpot = Selector(','.join(sel_out_gpot))
         sel_out_spk, self.out_spk_uids = self.extract_out_spk(comp_dict,
-                                                              self.uid_key)
+                                                              self._uid_key)
         self.sel_out_spk = Selector(','.join(sel_out_spk))
         sel_out = Selector.add(self.sel_out_gpot, self.sel_out_spk)
         sel_gpot = Selector.add(self.sel_in_gpot, self.sel_out_gpot)
         sel_spk = Selector.add(self.sel_in_spk, self.sel_out_spk)
         sel = Selector.add(sel_gpot, sel_spk)
-        if self.print_timing:
+        if self.cfg.print_timing:
             self.log_info("Elapsed time for generating selectors: {:.3f} seconds".format( time.time()-start))
 
         # Save component parameters data in the form
@@ -549,22 +383,22 @@ class LPU(Module):
                           for m, n in self.comp_list]
 
         data_gpot = np.zeros(len(self.in_gpot_uids)+len(self.out_gpot_uids),
-                             self.default_dtype)
+                             self.cfg.dtype)
         data_spike = np.zeros(len(self.in_spk_uids)+len(self.out_spk_uids),
-                              self.default_dtype)
+                              self.cfg.dtype)
 
-        if self.print_timing:
+        if self.cfg.print_timing:
             start = time.time()
         super(LPU, self).__init__(sel=sel, sel_in=sel_in, sel_out=sel_out,
                                   sel_gpot=sel_gpot, sel_spike=sel_spk,
                                   data_gpot=data_gpot, data_spike=data_spike,
-                                  columns=columns, ctrl_tag=ctrl_tag, gpot_tag=gpot_tag,
-                                  spike_tag=spike_tag, id=self.LPU_id,
+                                  columns=columns, ctrl_tag=self.cfg.ctrl_tag, gpot_tag=self.cfg.gpot_tag,
+                                  spike_tag=self.cfg.spike_tag, id=self.cfg.id,
                                   rank_to_id=rank_to_id, routing_table=routing_table,
-                                  device=device, debug=debug, time_sync=time_sync,
-                                  print_timing=print_timing)
+                                  device=self.cfg.device, debug=self.cfg.debug, time_sync=self.cfg.time_sync,
+                                  print_timing=self.cfg.print_timing)
 
-        if self.print_timing:
+        if self.cfg.print_timing:
             cuda.Context.synchronize()
             self.log_info("Elapsed time for initializing parent class: {:.3f} seconds".format(time.time()-start))
 
@@ -580,45 +414,43 @@ class LPU(Module):
         self.out_spk_inds = np.array(self.pm['spike'].ports_to_inds(
                                      self.sel_out_spk), dtype=np.int32)
 
-    # def generate_uid(self, input=False):
-    #     if input:
-    #         uid = 'input_' + str(np.random.randint(100000))
-    #     else:
-    #         uid = 'auto_' + str(np.random.randint(100000))
-    #     while uid in self.gen_uids:
-    #         if input:
-    #             uid = 'input_' + str(np.random.randint(100000))
-    #         else:
-    #             uid = 'auto_' + str(np.random.randint(100000))
-    #     return uid
-
     def pre_run(self):
-        if self.print_timing:
+        '''Pre Run
+        
+        1. super().pre_run() see `neurokernel.core_gpu.Module.pre_run`
+        2. instantiate MemoryManager
+        3. initialize variable memory
+        4. process_connections
+        5. initialize parameters
+        6. instantiate components
+        7. initialize Port I/O
+        8. intiialize I/O Processors
+        '''
+        if self.cfg.print_timing:
             start = time.time()
         super(LPU, self).pre_run()
-        if self.print_timing:
+        if self.cfg.print_timing:
             start = time.time()
             self.log_info("LPU pre_run parent took {} seconds".format(time.time()-start))
 
-        if self.print_timing:
+        if self.cfg.print_timing:
             start = time.time()
         self.memory_manager = MemoryManager()
-        self.init_variable_memory()
-        if self.print_timing:
+        self._init_variable_memory()
+        if self.cfg.print_timing:
             cuda.Context.synchronize()
             self.log_info('Elapsed time for initialing variable memory: {:.3f} seconds'.format( time.time()-start))
             start = time.time()
-        self.process_connections()
-        if self.print_timing:
+        self._process_connections()
+        if self.cfg.print_timing:
             self.log_info('Elapsed time for process_connections: {:.3f} seconds'.format(time.time()-start))
             start = time.time()
-        self.init_parameters()
-        if self.print_timing:
+        self._init_parameters()
+        if self.cfg.print_timing:
             cuda.Context.synchronize()
             self.log_info('Elapsed time for init_paramseters: {:.3f} seconds'.format( time.time()-start))
             start = time.time()
 
-        self.components = {}
         # Instantiate components
         for model in self.models:
             if model in ['Port','Input']: continue
@@ -643,7 +475,7 @@ class LPU(Module):
                             int(int(buff.gpudata)+(buff.current*buff.ld+\
                                                 shift)*buff.dtype.itemsize),
                             int(buff.dtype.itemsize*self.model_num[self.models[model]]))
-        if self.print_timing:
+        if self.cfg.print_timing:
             cuda.Context.synchronize()
             self.log_info('Elapsed time for instantiating components: {:.3f} seconds'.format(time.time()-start))
             start = time.time()
@@ -651,7 +483,7 @@ class LPU(Module):
         self._setup_input_ports()
         self._setup_output_ports()
 
-        if self.print_timing:
+        if self.cfg.print_timing:
             cuda.Context.synchronize()
             self.log_info('Elapsed time for setting up ports: {:.3f} seconds'.format( time.time()-start))
             start = time.time()
@@ -664,24 +496,291 @@ class LPU(Module):
             p.LPU_obj = self
             p._pre_run()
 
-        if self.print_timing:
+        if self.cfg.print_timing:
             cuda.Context.synchronize()
             self.log_info('Elapsed time for prerun input and output processors: {:.3f} seconds'.format( time.time()-start))
 
         self.memory_manager.precompile_fill_zeros()
 
-        if self.control_inteface: self.control_inteface.register(self)
-        if self.print_timing:
+        if self.control_interface: self.control_interface.register(self)
+        if self.cfg.print_timing:
             cuda.Context.synchronize()
             self.log_info("Elapsed time for LPU pre_run: {:.3f} seconds".format(time.time()-start))
 
-        if self.print_timing:
+        if self.cfg.print_timing:
             self.timing = {'read_input': 0, 'input_processors': 0, 'inject_input': 0,
                            'model_run': 0, 'output_processors': 0,
                            'extract_output': 0, 'total': 0}
 
-    # TODO: optimize the order of self.out_port_conns beforehand
+    def run_step(self):
+        super(LPU, self).run_step()
+
+        # Update input ports
+        if self.cfg.print_timing:
+            start_all = time.time()
+            start = time.time()
+        self._read_LPU_input()
+        if self.cfg.print_timing:
+            cuda.Context.synchronize()
+            self.timing['read_input'] += time.time()-start
+
+        # Fetch updated input if available from all input processors
+        if self.cfg.print_timing:
+            start = time.time()
+        for p in self.input_processors: p.run_step()
+        if self.cfg.print_timing:
+            cuda.Context.synchronize()
+            self.timing['input_processors'] += time.time()-start
+
+        if self.cfg.print_timing:
+            start = time.time()
+        for model in self.exec_order:
+            if model in self.model_var_inj:
+                for var in self.model_var_inj[model]:
+                    # Reset memory for external input to zero if present
+                    self.memory_manager.fill_zeros(model='Input', variable=var)
+                    for p in self.input_processors:
+                        p.inject_input(var)
+        if self.cfg.print_timing:
+            cuda.Context.synchronize()
+            self.timing['inject_input'] += time.time()-start
+
+        # Call run_step of components
+        if self.cfg.print_timing:
+            start = time.time()
+        for model in self.exec_order:
+            # Get correct position in buffer for update
+            update_pointers = {}
+            for var in self._comps[model]['updates']:
+                buff = self.memory_manager.get_buffer(var)
+                mind = self.memory_manager.variables[var]['models'].index(model)
+                shift = self.memory_manager.variables[var]['cumlen'][mind]
+                buffer_current_plus_one = buff.current + 1
+                if buffer_current_plus_one >= buff.buffer_length:
+                    buffer_current_plus_one = 0
+                update_pointers[var] = int(buff.gpudata)+\
+                                       (buffer_current_plus_one*buff.ld+\
+                                        shift)*buff.dtype.itemsize
+            self.components[model].run_step(update_pointers)
+        if self.cfg.print_timing:
+            cuda.Context.synchronize()
+            self.timing['model_run'] += time.time()-start
+
+        # Process output processors
+        if self.cfg.print_timing:
+            start = time.time()
+        for p in self.output_processors: p.run_step()
+        if self.cfg.print_timing:
+            cuda.Context.synchronize()
+            self.timing['output_processors'] += time.time()-start
+
+        # Update output ports
+        if self.cfg.print_timing:
+            start = time.time()
+        self._extract_output()
+        if self.cfg.print_timing:
+            cuda.Context.synchronize()
+            self.timing['extract_output'] += time.time()-start
+
+        # Step through buffers
+        self.memory_manager.step()
+
+        self.time += self.dt
+
+        # Instruct Control inteface to process any pending commands
+        if self.control_interface: self.control_interface.process_commands()
+        if self.cfg.print_timing:
+            cuda.Context.synchronize()
+            self.timing['total'] += time.time()-start_all
+
+    def post_run(self):
+        super(LPU, self).post_run()
+        for comp in self.components.values():
+            comp.post_run()
+        # Cycle through IO processors as well
+        for p in self.input_processors: p.post_run()
+        for p in self.output_processors: p.post_run()
+        if self.cfg.print_timing:
+            print('time spent on:', self.timing)
+
+    def _process_conn_list(self, comp_dict, conn_list,
+                           reverse_set=('reverse','Vr','VR','reverse_potential')):
+        '''Process Connections between components
+
+        remove inconsitent connections
+        calculate required delays, infer variable if required
+        '''
+        in_port_vars_set = {}
+
+        # Map from post synaptic component to aggregator uid
+        agg_map = {}
+        agg = {}
+        conns = []
+        in_port_vars = {}
+        out_port_conns = []
+        comp_uid_order = {}
+        for model, attribs in comp_dict.items():
+            comp_uid_order[model] = {uid: i for i, uid in enumerate(attribs[self._uid_key])}
+
+        comp_updates = {name: v['updates'] if not name=='Port' else [] \
+                        for name, v in self._comps.items()}
+        comp_updates.update({'Port': []})
+        comp_accesses = {name: v['accesses'] if not name=='Port' else [] \
+                         for name, v in self._comps.items()}
+        comp_accesses.update({'Port': []})
+
+        for pre, post, data in conn_list:
+            try:
+                pre_model = self.uid_model_map[pre]
+            except KeyError:
+                continue
+            try:
+                post_model = self.uid_model_map[post]
+            except KeyError:
+                continue
+
+            # Update delay, overwritting `data` dict 
+            if 'delay' in data:
+                _delay = int(round((data['delay']/self.dt)))
+            else:
+                _delay = 0
+            delay = max(_delay, 1) - 1
+            data['delay'] = delay
+
+            pre_updates = comp_updates[pre_model]
+            pre_updates_set = set(pre_updates)
+            post_accesses = comp_accesses[post_model]
+            post_accesses_set = set(post_accesses)
+            pre_post_intersection = pre_updates_set & post_accesses_set
+            g_in_pre_update = 'g' in pre_updates_set # not so useful
+            V_in_pre_update = 'V' in pre_updates_set
+
+            if post_model == 'Aggregator':
+                agg_map[post] = post
+                # check if reverse potential exist from list of allowed keywords
+                reverse_key = None
+                for k in reverse_set:
+                    if k in data:
+                        reverse_key = k
+                        reverse = data[reverse_key]
+                        break
+                # If no key in data, look in the attibutes of the synapse
+                if reverse_key is None:
+                    s = set(reverse_set) & set(comp_dict[pre_model])
+                    if s: reverse_key = s.pop()
+                    if reverse_key:
+                        reverse = comp_dict[pre_model][reverse_key][\
+                                comp_uid_order[pre_model][pre]]
+                        if g_in_pre_update:
+                            data['reverse'] = reverse
+                    else:
+                        if g_in_pre_update:
+                            self.log_info('Assuming reverse potential ' +
+                                          'to be zero for connection from' +
+                                          '%s to %s'%(pre,post))
+                            data['reverse'] = 0
+                        reverse = 0
+
+                if post in agg:
+                    if g_in_pre_update:
+                        agg[post].append({'pre':pre,'reverse':reverse,
+                                          'variable':'g'})
+                    elif V_in_pre_update:
+                        agg[post].append({'pre':pre, 'variable':'V'})
+                else:
+                    # Make sure aggregator has access to postsynaptic voltage
+                    if g_in_pre_update:
+                        agg[post] = [{'pre':pre,'reverse':reverse,'variable':'g'}]
+                    elif V_in_pre_update:
+                        agg[post] = [{'pre':pre,'variable':'V'}]
+
+                if g_in_pre_update:
+                    agg[post][-1].update(data)
+                    self.variable_delay_map['g'] = max(data['delay'],
+                                    self.variable_delay_map['g'] if 'g' in \
+                                    self.variable_delay_map else 0)
+
+            # Insert Aggregator between g->V if required. Assume 'reverse' or
+            # 'Vr' or 'VR' or 'reverse_potential' id present as a param in the
+            # synapse in that case
+            if not pre_post_intersection:
+                if g_in_pre_update and 'I' in post_accesses_set:
+                    # start2 = time.time()
+                    # First look for reverse in the attributes of the edge
+                    reverse_key = None
+                    for k in reverse_set:
+                        if k in data:
+                            reverse_key = k
+                            reverse = data[reverse_key]
+                            break
+                    if reverse_key is None:
+                        # else look in the attibutes of the synapse
+                        s = (set(['reverse','Vr','VR','reverse_potential'])&
+                             set(comp_dict[pre_model]))
+                        if s: reverse_key = s.pop()
+                        if reverse_key:
+                            reverse = comp_dict[pre_model][reverse_key][\
+                                    comp_uid_order[pre_model][pre]]
+                        else:
+                            self.log_info('Assuming reverse potential ' +
+                                          'to be zero for connection from' +
+                                          '%s to %s'%(pre,post))
+                            reverse = 0
+
+                    data.update({'pre':pre,'reverse':reverse,
+                                 'variable':'g'})
+                    if post in agg:
+                        agg[post].append(data)
+                    else:
+                        # Make sure aggregator has access to postsynaptic voltage
+                        agg[post] = [{'pre':post,'variable':'V'},
+                                     data]
+                    if post not in agg_map:
+                        uid = self._uid_generator.generate_uid()
+                        agg_map[post] = uid
+                    self.variable_delay_map['g'] = max(data['delay'],
+                                    self.variable_delay_map['g'] if 'g' in \
+                                    self.variable_delay_map else 0)
+
+                elif pre_model == 'Port':
+                    if not 'variable' in data:
+                        data['variable'] = post_accesses[0]
+                    if not data['variable'] in in_port_vars:
+                        in_port_vars[data['variable']] = []
+                        in_port_vars_set[data['variable']] = set()
+                    if pre not in in_port_vars_set[data['variable']]:
+                        in_port_vars[data['variable']].append(pre)
+                        in_port_vars_set[data['variable']].add(pre)
+                    conns.append((pre, post, data))
+                    self.variable_delay_map[data['variable']] = max(data['delay'],
+                            self.variable_delay_map[data['variable']] if \
+                            data['variable'] in self.variable_delay_map else 0)
+                elif post_model == 'Port':
+                    if not 'variable' in data:
+                        data['variable'] = pre_updates[0]
+                    out_port_conns.append((pre, post, data['variable']))
+                else:
+                    self.log_info("Ignoring connection %s -> %s"%(pre,post))
+                continue
+
+            var = data['variable'] if 'variable' in data else None
+            if not var:
+                var = pre_post_intersection.pop()
+            elif not (var in pre_updates_set and var in post_accesses_set):
+                continue
+            data['variable'] = var
+            self.variable_delay_map[data['variable']] = max(data['delay'],
+                            self.variable_delay_map[data['variable']] if \
+                            data['variable'] in self.variable_delay_map else 0)
+            # connection to Aggregator will be added later
+            if 'Aggregator' not in post_model:
+                conns.append((pre,post,data))
+        return agg_map, agg, conns, in_port_vars, out_port_conns
+    
     def _setup_output_ports(self):
+        ''' Setup output ports
+        TODO: optimize the order of self.out_port_conns beforehand
+        '''
         self.out_port_inds_gpot = {}
         self.out_var_inds_gpot = {}
         self.out_port_inds_spk = {}
@@ -730,6 +829,8 @@ class LPU(Module):
                         np.array(self.out_var_inds_spk[var],np.int32))
 
     def _setup_input_ports(self):
+        '''setup input ports
+        '''
         self.port_inds_gpot = {}
         self.var_inds_gpot = {}
         self.port_inds_spk = {}
@@ -777,11 +878,11 @@ class LPU(Module):
                         np.array(self.var_inds_spk[var],np.int32))
 
 
-    def init_parameters(self):
+    def _init_parameters(self):
         for m, n in self.comp_list:
             if not m in ['Port','Input']:
                 nn = n.copy()
-                nn.pop(self.uid_key)
+                nn.pop(self._uid_key)
                 # copy integer and boolean parameters into separate dictionary
                 nn_int = {k:v for k, v in iteritems(nn) if (isinstance(v, list)
                             and len(v) and type(v[0]) in [int, bool])}
@@ -792,9 +893,11 @@ class LPU(Module):
                     self.memory_manager.params_htod(m, nn_int, np.int32)
                 if nn_rest:
                     self.memory_manager.params_htod(m, nn_rest,
-                                                    self.default_dtype)
+                                                    self.cfg.dtype)
 
-    def init_variable_memory(self):
+    def _init_variable_memory(self):
+        '''Initialize Memory for all Variables
+        '''
         var_info = {}
         for (model, attribs) in self.comp_list:
             if model in ['Port']: continue
@@ -804,15 +907,15 @@ class LPU(Module):
                     if not var in var_info:
                         var_info[var] = {'models':[],'len':[],'delay':0,'uids':[]}
                     var_info[var]['models'].append('Input')
-                    var_info[var]['len'].append(len(d[self.uid_key]))
-                    var_info[var]['uids'].extend(d[self.uid_key])
+                    var_info[var]['len'].append(len(d[self._uid_key]))
+                    var_info[var]['uids'].extend(d[self._uid_key])
                 continue
             for var in self._comps[model]['updates']:
                 if not var in var_info:
                     var_info[var] = {'models':[],'len':[],'delay':0,'uids':[]}
                 var_info[var]['models'].append(model)
-                var_info[var]['len'].append(len(attribs[self.uid_key]))
-                var_info[var]['uids'].extend(attribs[self.uid_key])
+                var_info[var]['len'].append(len(attribs[self._uid_key]))
+                var_info[var]['uids'].extend(attribs[self._uid_key])
 
         # Add memory for input ports
         for var in self.in_port_vars:
@@ -822,8 +925,6 @@ class LPU(Module):
             var_info[var]['len'].append(len(self.in_port_vars[var]))
             var_info[var]['uids'].extend(self.in_port_vars[var])
 
-
-
         for var in self.variable_delay_map:
             var_info[var]['delay'] = self.variable_delay_map[var]
 
@@ -831,16 +932,24 @@ class LPU(Module):
             d['cumlen'] = np.cumsum([0]+d['len'])
             d['uids'] = {uid:i for i, uid in enumerate(d['uids'])}
             self.memory_manager.memory_alloc(var, d['cumlen'][-1], d['delay']+2,\
-                dtype=self.default_dtype,
+                dtype=self.cfg.dtype,
                 info=d)
 
-    def process_connections(self):
+    def _process_connections(self):
+        '''Process Connections and update `comp_list`
+        4 attributes are computed and updated for each component:
+        1. pre: 
+        2. cumpre:
+        3. npre:
+        4. conn_data:
+        '''
         for (model, attribs) in self.comp_list:
-            if model in ['Port','Input']: continue
+            if model in ['Port', 'Input']:
+                continue
             pre = {var:[] for var in self._comps[model]['accesses']}
             npre = {var:[] for var in self._comps[model]['accesses']}
             data = {var:{} for var in self._comps[model]['accesses']}
-            for uid in attribs[self.uid_key]:
+            for uid in attribs[self._uid_key]:
                 cnt = {var:0 for var in self._comps[model]['accesses']}
                 if uid in self.conn_dict:
                     for var in self.conn_dict[uid]:
@@ -868,101 +977,6 @@ class LPU(Module):
             attribs['cumpre'] = cumpre
             attribs['npre'] = npre
             attribs['conn_data'] = data
-
-    def post_run(self):
-        super(LPU, self).post_run()
-        for comp in self.components.values():
-            comp.post_run()
-        # Cycle through IO processors as well
-        for p in self.input_processors: p.post_run()
-        for p in self.output_processors: p.post_run()
-        if self.print_timing:
-            print('time spent on:', self.timing)
-
-    def run_step(self):
-        super(LPU, self).run_step()
-
-
-        # Update input ports
-        if self.print_timing:
-            start_all = time.time()
-            start = time.time()
-        self._read_LPU_input()
-        if self.print_timing:
-            cuda.Context.synchronize()
-            self.timing['read_input'] += time.time()-start
-
-
-        # Fetch updated input if available from all input processors
-        if self.print_timing:
-            start = time.time()
-        for p in self.input_processors: p.run_step()
-        if self.print_timing:
-            cuda.Context.synchronize()
-            self.timing['input_processors'] += time.time()-start
-
-        if self.print_timing:
-            start = time.time()
-        for model in self.exec_order:
-            if model in self.model_var_inj:
-                for var in self.model_var_inj[model]:
-                    # Reset memory for external input to zero if present
-                    self.memory_manager.fill_zeros(model='Input', variable=var)
-                    for p in self.input_processors:
-                        p.inject_input(var)
-        if self.print_timing:
-            cuda.Context.synchronize()
-            self.timing['inject_input'] += time.time()-start
-
-        # Call run_step of components
-        if self.print_timing:
-            start = time.time()
-        for model in self.exec_order:
-            # Get correct position in buffer for update
-            update_pointers = {}
-            for var in self._comps[model]['updates']:
-                buff = self.memory_manager.get_buffer(var)
-                mind = self.memory_manager.variables[var]['models'].index(model)
-                shift = self.memory_manager.variables[var]['cumlen'][mind]
-                buffer_current_plus_one = buff.current + 1
-                if buffer_current_plus_one >= buff.buffer_length:
-                    buffer_current_plus_one = 0
-                update_pointers[var] = int(buff.gpudata)+\
-                                       (buffer_current_plus_one*buff.ld+\
-                                        shift)*buff.dtype.itemsize
-            self.components[model].run_step(update_pointers)
-        if self.print_timing:
-            cuda.Context.synchronize()
-            self.timing['model_run'] += time.time()-start
-
-        # Process output processors
-        if self.print_timing:
-            start = time.time()
-        for p in self.output_processors: p.run_step()
-        if self.print_timing:
-            cuda.Context.synchronize()
-            self.timing['output_processors'] += time.time()-start
-
-        # Check for transforms
-
-        # Update output ports
-        if self.print_timing:
-            start = time.time()
-        self._extract_output()
-        if self.print_timing:
-            cuda.Context.synchronize()
-            self.timing['extract_output'] += time.time()-start
-
-        # Step through buffers
-        self.memory_manager.step()
-
-        self.time += self.dt
-
-        # Instruct Control inteface to process any pending commands
-        if self.control_inteface: self.control_inteface.process_commands()
-        if self.print_timing:
-            cuda.Context.synchronize()
-            self.timing['total'] += time.time()-start_all
 
     def _read_LPU_input(self):
         """
@@ -1034,6 +1048,7 @@ class LPU(Module):
     set_inds_both.cache = {}
 
     def _instantiate_component(self, comp_name):
+        """Instantiate Component by name"""
         try:
             cls = self._comps[comp_name]['cls']
         except:
