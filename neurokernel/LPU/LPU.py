@@ -25,29 +25,17 @@ import pycuda.elementwise as elementwise
 import numpy as np
 import networkx as nx
 
-#import time
-
-# Work around bug in networkx < 1.9 that causes networkx to choke on GEXF
-# files with boolean attributes that contain the strings 'True' or 'False'
-# (bug already observed in https://github.com/networkx/networkx/pull/971)
-nx.readwrite.gexf.GEXF.convert_bool['false'] = False
-nx.readwrite.gexf.GEXF.convert_bool['False'] = False
-nx.readwrite.gexf.GEXF.convert_bool['true'] = True
-nx.readwrite.gexf.GEXF.convert_bool['True'] = True
-
 from neurokernel.mixins import LoggerMixin
 from neurokernel.core_gpu import Module, CTRL_TAG, GPOT_TAG, SPIKE_TAG
 from neurokernel.tools.gpu import get_by_inds
 from neurokernel.plsel import Selector
 
-from types import *
-from collections import Counter
 
 from .utils.simpleio import *
 from .utils import parray
-
 from .NDComponents import *
 from .MemoryManager import MemoryManager
+from . import graph_parser as GParser
 
 import pdb
 
@@ -1058,23 +1046,69 @@ class LPU(Module):
                           for var in self._comps[comp_name]['accesses'] \
                           if var in self.memory_manager.variables}
         return cls(params_dict, access_buffers, self.dt,
-                   LPU_id=self.LPU_id, debug=self.debug,
-                   cuda_verbose=bool(self.compile_options))
+                   LPU_id=self.cfg.id, debug=self.cfg.debug,
+                   cuda_verbose=bool(self.cfg.compile_options))
 
 
     def _load_components(self, extra_comps=[]):
-        """
-        Load all available NDcomponents
-        """
+        """Load all available NDcomponents"""
         child_classes = NDComponent.NDComponent.__subclasses__()
         comp_classes = child_classes[:]
         for cls in child_classes:
             comp_classes.extend(cls.__subclasses__())
         comp_classes.extend(extra_comps)
-        self._comps = {cls.__name__:{'accesses': cls.accesses ,
-                                     'updates':cls.updates,
-                                     'cls':cls} \
-                       for cls in comp_classes if not cls.__name__[:4]=='Base'}
+        return {cls.__name__:{'accesses': cls.accesses ,
+                              'updates':cls.updates,
+                              'cls':cls} \
+                for cls in comp_classes if not cls.__name__[:4]=='Base'}
+
+    @staticmethod
+    def lpu_parser(filename):
+        return GParser.lpu_parser(filename)
+
+    @staticmethod
+    def graph_to_dicts(graph, uid_key=None, class_key='class', remove_edge_id=False):
+        return GParser.graph_to_dicts(graph, uid_key, class_key, remove_edge_id)
+
+    @classmethod
+    def extract_in_gpot(cls, comp_dict, uid_key):
+        return GParser.extract_in_gpot(comp_dict, uid_key)
+
+    @classmethod
+    def extract_in_spk(cls, comp_dict, uid_key):
+        return GParser.extract_in_spk(comp_dict, uid_key)
+
+    @classmethod
+    def extract_out_gpot(cls, comp_dict, uid_key):
+        return GParser.extract_out_gpot(comp_dict, uid_key)
+
+    @classmethod
+    def extract_out_spk(cls, comp_dict, uid_key):
+        return GParser.extract_out_spk(comp_dict, uid_key)
+
+    @classmethod
+    def extract_sel_in_gpot(cls, comp_dict):
+        return GParser.extract_sel_in_gpot(comp_dict)
+
+    @classmethod
+    def extract_sel_in_spk(cls, comp_dict):
+        return GParser.extract_sel_in_spk(comp_dict)
+
+    @classmethod
+    def extract_sel_out_gpot(cls, comp_dict):
+        return GParser.extract_sel_out_gpot(comp_dict)
+
+    @classmethod
+    def extract_sel_out_spk(cls, comp_dict):
+        return GParser.extract_sel_out_spk(comp_dict)
+
+    @classmethod
+    def extract_sel_in(cls, comp_dict):
+        return GParser.extract_sel_in(comp_dict)
+
+    @classmethod
+    def extract_sel_out(cls, comp_dict):
+        return GParser.extract_sel_out(comp_dict)
 
 
 class uid_generator(object):
