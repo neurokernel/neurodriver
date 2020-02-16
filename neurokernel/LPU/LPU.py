@@ -1,18 +1,20 @@
 #!/usr/bin/env python
-
 """
 Local Processing Unit (LPU) with plugin support for various neuron/synapse models.
 """
+import typing as tp
+import dataclasses
 import time
 import collections
 import numbers
 import copy
 import itertools
+from types import *
+from collections import Counter
 
 from future.utils import iteritems
 from past.builtins import long
 from builtins import zip
-
 
 import pycuda.gpuarray as garray
 from pycuda.tools import dtype_to_ctype
@@ -54,438 +56,113 @@ PORT_IN_SPK = 'port_in_spk'
 PORT_OUT_GPOT = 'port_out_gpot'
 PORT_OUT_SPK = 'port_out_spk'
 
+@dataclasses.dataclass
+class LPUConfig:
+    id: str = None
+    dtype: tp.Union[np.dtype, tp.Any] = np.double
+    ctrl_tag: int = CTRL_TAG
+    gpot_tag: int = GPOT_TAG
+    spike_tag: int = SPIKE_TAG
+    device: tp.Union[int, None] = 0
+    debug: bool = True
+    cuda_verbose: bool = False
+    compile_options: tp.List[str] = dataclasses.field(default_factory=list)
+    print_timing: bool = False
+    time_sync: bool = False
+
+    def __post_init__(self):
+        if self.cuda_verbose:
+            if '--ptxas-options=-v' not in self.compile_options:
+                self.compile_options += ['--ptxas-options=-v']
+        else:
+            if '--ptxas-options=-v' in self.compile_options:
+                self.compile_options.remove('--ptxas-options=-v')
+
+
 class LPU(Module):
-    @staticmethod
-    def conv_legacy_graph(g):
-        """
-        Converts a gexf from legacy neurodriver format to one currently
-        supported
-        """
-
-
-        # Find maximum ID in given graph so that we can use it to create new nodes
-        # with IDs that don't overlap with those that already exist:
-        max_id = 0
-        for id in g.nodes():
-            if isinstance(id, basestring):
-                if id.isdigit():
-                    max_id = max(max_id, int(id))
-                else:
-                    raise ValueError('node id must be an integer')
-            elif isinstance(id, numbers.Integral):
-                max_id = max(max_id, id)
-            else:
-                raise ValueError('node id must be an integer')
-            gen_new_id = itertools.count(max_id+1).next
-
-        # Create LPU and interface nodes and connect the latter to the former via an
-        # Owns edge:
-        g_new = nx.MultiDiGraph()
-
-        # Transformation:
-        # 1. nonpublic neuron node -> neuron node
-        # 2. public neuron node -> neuron node with
-        #    output edge to output port
-        # 3. input port -> input port
-        # 4. synapse edge -> synapse node + 2 edges connecting
-        #    transformed original input/output nodes
-        edges_to_out_ports = [] # edges to new output port nodes:
-        for id, data in g.nodes(data=True):
-
-            # Don't clobber the original graph's data:
-            data = copy.deepcopy(data)
-
-            if 'public' in data and data['public']:
-                new_id = gen_new_id()
-                port_data = {'selector': data['selector'],
-                             'port_type': 'spike' if data['spiking'] else 'gpot',
-                             'port_io': 'out',
-                             'class': 'Port'}
-                g_new.add_node(new_id, port_data)
-                edges_to_out_ports.append((id, new_id))
-                del data['selector']
-
-            if 'model' in data:
-                if data['model'] == 'port_in_gpot':
-                    for a in data:
-                        if a!='selector': del data[a]
-                    data['class'] = 'Port'
-                    data['port_type'] = 'gpot'
-                    data['port_io'] = 'in'
-                elif data['model'] == 'port_in_spk':
-                    for a in data:
-                        if a!='selector': del data[a]
-                    data['class'] = 'Port'
-                    data['port_type'] = 'spike'
-                    data['port_io'] = 'in'
-                else:
-                    data['class'] = data['model']
-
-                # Don't need to several attributes that are implicit:
-                for a in ['model', 'public', 'spiking','extern']:
-                    if a in data: del data[a]
-
-                g_new.add_node(id, attr_dict=data)
-
-        # Create synapse nodes for each edge in original graph and connect them to
-        # the source/dest neuron/port nodes:
-        for from_id, to_id, data in g.edges(data=True):
-            data = copy.deepcopy(data)
-            if data['model'] == 'power_gpot_gpot':
-                data['class'] = 'PowerGPotGPot'
-            else:
-                data['class'] = data['model']
-            del data['model']
-
-            if 'id' in data: del data['id']
-
-            new_id = gen_new_id()
-            g_new.add_node(new_id, attr_dict=data)
-            g_new.add_edge(from_id, new_id, attr_dict={})
-            g_new.add_edge(new_id, to_id, attr_dict={})
-
-        # Connect output ports to the neurons that emit data through them:
-        for from_id, to_id in edges_to_out_ports:
-            g_new.add_edge(from_id, to_id, attr_dict={})
-
-        return g_new
-
-    @staticmethod
-    def graph_to_dicts(graph, uid_key=None, class_key='class',
-                       remove_edge_id = False):
-        """
-        Convert graph of LPU neuron/synapse data to Python data structures.
-
-        Parameters
-        ----------
-        graph : networkx.MultiDiGraph
-            NetworkX graph containing LPU data.
-
-        Returns
-        -------
-        comp_dict : dict
-            A dictionary of components of which
-            keys are model names, and
-            values are dictionaries of parameters/attributes associated
-            with the model.
-            Keys of a dictionary of parameters are the names of them,
-            and values of corresponding keys are lists of value of parameters.
-            One of the parameters is called 'id' and by default it
-            uses the id of the node in the graph.
-            If uid_keys is specified, id will use the specified parameter.
-            Therefore, comp_dict has the following structure:
-
-            comp_dict = {}
-                comp_dict[model_name_1] = {}
-                    comp_dict[model_name_1][parameter_1] = []
-                    ...
-                    comp_dict[model_name_1][parameter_N] = []
-                    comp_dict[model_name_1][id] = []
-
-                ...
-
-                comp_dict[model_name_M] = {}
-                    comp_dict[model_name_M][parameter_1] = []
-                    ...
-                    comp_dict[model_name_M][parameter_N] = []
-                    comp_dict[model_name_M][id] = []
-
-        conns : list
-            A list of edges contained in graph describing the relation
-            between components
-
-        Example
-        -------
-        TODO: Update
-
-        Notes
-        -----
-        TODO: Update
-        """
-
-        comp_dict = {}
-        comps = graph.nodes.items()
-
-        all_component_types = list(set([comp[class_key] for uid, comp in comps]))
-
-        for model in all_component_types:
-            sub_comps = [comp for comp in comps \
-                                   if comp[1][class_key] == model]
-
-            all_keys = [set(comp[1]) for comp in sub_comps]
-            key_intersection = set.intersection(*all_keys)
-            key_union = set.union(*all_keys)
-
-            # For visually checking if any essential parameter is dropped
-            ignored_keys = list(key_union-key_intersection)
-            if ignored_keys:
-                print('parameters of model {} ignored: {}'.format(model, ignored_keys))
-
-            del all_keys
-
-            sub_comp_keys = list(key_intersection)
-
-            if model == 'Port':
-                assert('selector' in sub_comp_keys)
-
-            comp_dict[model] = {
-                k: [comp[k] for uid, comp in sub_comps] \
-                for k in sub_comp_keys if not k in [uid_key, class_key]}
-
-            comp_dict[model]['id'] = [comp[uid_key] if uid_key else uid \
-                                      for uid, comp in sub_comps]
-
-            print('Number of {}: {}'.format(model, len(comp_dict[model]['id'])))
-
-#        for id, comp in comps:
-#            model = comp[class_key]
-#
-#            # For port, make sure selector is specified
-#            if model == 'Port':
-#                assert('selector' in comp.keys())
-#
-#            # if the neuron model does not appear before, add it into n_dict
-#            if model not in comp_dict:
-#                comp_dict[model] = {k:[] for k in comp.keys() + ['id']}
-#
-#            # Same model should have the same attributes
-#            if not set(comp_dict[model].keys()) == set(comp.keys() + ['id']):
-#                raise KeyError("keys of component does not match with that of "+\
-#                               model+": "+ str(set(comp_dict[model].keys())) +
-#                               str(set(comp.keys() + ['id'])))
-#
-#            # add data to the subdictionary of comp_dict
-#            for key in comp.iterkeys():
-#                if not key==uid_key:
-#                    comp_dict[model][key].append( comp[key] )
-#            if uid_key:
-#                comp_dict[model]['id'].append(comp[uid_key])
-#            else:
-#                comp_dict[model]['id'].append( id )
-#
-#        # Remove duplicate model information:
-#        for val in comp_dict.itervalues(): val.pop(class_key)
-
-        # Extract connections
-        conns = graph.edges(data=True)
-        if remove_edge_id:
-            for pre, post, conn in conns:
-                conn.pop('id', None)
-        return comp_dict, conns
-
-    @staticmethod
-    def lpu_parser(filename):
-        """
-        GEXF LPU specification parser.
-
-        Extract LPU specification data from a GEXF file and store it in
-        Python data structures.
-        TODO: Update
-
-        Parameters
-        ----------
-        filename : str
-            GEXF filename.
-
-        Returns
-        -------
-        TODO: Update
-        """
-
-        graph = nx.read_gexf(filename)
-        return LPU.graph_to_dicts(graph, remove_edge_id = True)
-
-    @staticmethod
-    def lpu_parser_legacy(filename):
-        """
-        TODO: Update
-        """
-
-        graph = nx.read_gexf(filename)
-        return LPU.graph_to_dicts(LPU.conv_legacy_graph(graph))
-
-    @classmethod
-    def extract_in_gpot(cls, comp_dict, uid_key):
-        """
-        Return selectors of non-spiking input ports.
-        """
-        if not 'Port' in comp_dict: return ('',[])
-        a = list(zip(*[(sel,uid) for sel,ptype,io,uid in \
-                         zip(comp_dict['Port']['selector'],
-                             comp_dict['Port']['port_type'],
-                             comp_dict['Port']['port_io'],
-                             comp_dict['Port'][uid_key]) if ptype=='gpot' \
-                  and io=='in']))
-        if not a: a = ('',[])
-        return a
-
-    @classmethod
-    def extract_in_spk(cls, comp_dict, uid_key):
-        """
-        Return selectors of spiking input ports.
-        """
-        if not 'Port' in comp_dict: return ('',[])
-        a = list(zip(*[(sel,uid) for sel,ptype,io,uid in \
-                         zip(comp_dict['Port']['selector'],
-                             comp_dict['Port']['port_type'],
-                             comp_dict['Port']['port_io'],
-                             comp_dict['Port'][uid_key]) if ptype=='spike' \
-                         and io=='in']))
-        if not a: a = ('',[])
-        return a
-
-    @classmethod
-    def extract_out_gpot(cls, comp_dict, uid_key):
-        """
-        Return selectors of non-spiking output neurons.
-        """
-        if not 'Port' in comp_dict: return ('',[])
-        a = list(zip(*[(sel,uid) for sel,ptype,io,uid in \
-                         zip(comp_dict['Port']['selector'],
-                             comp_dict['Port']['port_type'],
-                             comp_dict['Port']['port_io'],
-                             comp_dict['Port'][uid_key]) if ptype=='gpot' \
-                  and io=='out']))
-        if not a: a = ('',[])
-        return a
-
-    @classmethod
-    def extract_out_spk(cls, comp_dict, uid_key):
-        """
-        Return selectors of spiking output neurons.
-        """
-        if not 'Port' in comp_dict: return ('',[])
-        a = list(zip(*[(sel,uid) for sel,ptype,io,uid in \
-                         zip(comp_dict['Port']['selector'],
-                             comp_dict['Port']['port_type'],
-                             comp_dict['Port']['port_io'],
-                             comp_dict['Port'][uid_key]) if ptype=='spike' \
-                  and io=='out']))
-        if not a: a = ('',[])
-        return a
-
-    @classmethod
-    def extract_sel_in_gpot(cls, comp_dict):
-        """
-        Return selectors of non-spiking input ports.
-        """
-        if not 'Port' in comp_dict: return ''
-        return ','.join([sel  for sel,ptype,io in \
-                         zip(comp_dict['Port']['selector'],
-                             comp_dict['Port']['port_type'],
-                             comp_dict['Port']['port_io']) \
-                             if ptype=='gpot' and io=='in'])
-
-    @classmethod
-    def extract_sel_in_spk(cls, comp_dict):
-        """
-        Return selectors of spiking input ports.
-        """
-        if not 'Port' in comp_dict: return ''
-        return ','.join([sel  for sel,ptype,io in \
-                         zip(comp_dict['Port']['selector'],
-                             comp_dict['Port']['port_type'],
-                             comp_dict['Port']['port_io']) \
-                             if ptype=='spike' and io=='in'])
-
-    @classmethod
-    def extract_sel_out_gpot(cls, comp_dict):
-        """
-        Return selectors of non-spiking output neurons.
-        """
-        if not 'Port' in comp_dict: return ''
-        return ','.join([sel  for sel,ptype,io in \
-                         zip(comp_dict['Port']['selector'],
-                             comp_dict['Port']['port_type'],
-                             comp_dict['Port']['port_io']) \
-                             if ptype=='gpot' and io=='out'])
-
-    @classmethod
-    def extract_sel_out_spk(cls, comp_dict):
-        """
-        Return selectors of spiking output neurons.
-        """
-        if not 'Port' in comp_dict: return ''
-        return ','.join([sel for sel,ptype,io,uid in \
-                  zip(comp_dict['Port']['selector'],
-                      comp_dict['Port']['port_type'],
-                      comp_dict['Port']['port_io']) \
-                  if ptype=='spike' and io=='out'])
-
-    @classmethod
-    def extract_sel_in(cls, comp_dict):
-        """
-        Return selectors of all input ports.
-        """
-        if not 'Port' in comp_dict: return ''
-        return ','.join([sel for sel, io in \
-                         zip(comp_dict['Port']['selector'],
-                             comp_dict['Port']['port_io']) if io=='in'])
-
-    @classmethod
-    def extract_sel_out(cls, comp_dict):
-        """
-        Return selectors of all output neurons.
-        """
-
-        if not 'Port' in comp_dict: return ''
-        return ','.join([sel for sel, io in \
-                         zip(comp_dict['Port']['selector'],
-                             comp_dict['Port']['port_io']) if io=='out'])
-
-    @classmethod
-    def extract_sel_all(cls, comp_dict):
-        """
-        Return selectors for all input ports and output neurons.
-        """
-
-        return ','.join(filter(None, \
-                    [cls.extract_in(comp_dict), cls.extract_out(comp_dict)]))
-
-
     def __init__(self, dt, comp_dict, conn_list, device=0, input_processors=[],
                  output_processors=[], ctrl_tag=CTRL_TAG, gpot_tag=GPOT_TAG,
                  spike_tag=SPIKE_TAG, rank_to_id=None, routing_table=None,
                  uid_key='id', debug=False, columns=['io', 'type', 'interface'],
                  cuda_verbose=False, time_sync=False, default_dtype=np.double,
-                 control_inteface=None, id=None, extra_comps=[],
+                 control_interface=None, id=None, extra_comps=[],
                  print_timing=False):
-
+        """
+        :param dt: time step
+        :param comp_dict: DictItem of components and attributes. 
+            Attributes of all nodes of the same class are collected in a single vector format
+        :param conn_list: List of presynaptic, postsynaptic and data in between
+            [(pre:str, post:str, data:dict)]
+        :param device: GPU device to use.
+        :param input_processors: list of input processors
+        :param output_processors: list of output processors
+        :param ctrl_tag:
+            MPI tags that identify messages containing control data values transmitted to
+            worker nodes.
+        :param gpot_tag:
+            MPI tags that identify messages containing
+            graded potential port values transmitted to
+            worker nodes.
+        :param spike_tag:
+            MPI tags that identify messages containing spiking port values transmitted to
+            worker nodes.
+        :param rank_to_id: bidict.bidict
+            Mapping between MPI Ranks and module object IDs
+        :param routing_table:
+        :param uid_key: 
+        :param debug:
+        :param columns: interface port attributes, network port for controlling the module instance.
+        :param cuda_verbose:
+        :param time_sync: Time synchronization flag.
+            when True, debug messages are not emitted during module synchronization and the
+            time taken to receive all incoming data is computed
+        :param default_dtype:
+        :param control_interface:
+        :param id: str Module identifier
+        :param extra_comps:
+        :param print_timing:
+        """
         LoggerMixin.__init__(self, 'LPU {}'.format(id))
 
         assert('io' in columns)
         assert('type' in columns)
         assert('interface' in columns)
-        self.LPU_id = id
         self.dt = dt
+        self.cfg = LPUConfig(
+            id=id,
+            dtype=default_dtype,
+            ctrl_tag=ctrl_tag,
+            gpot_tag=gpot_tag,
+            spike_tag=spike_tag,
+            device=device,
+            debug=debug,
+            cuda_verbose=cuda_verbose,
+            print_timing=print_timing,
+            time_sync=time_sync
+        )
         self.time = 0
-        self.debug = debug
-        self.device = device
-        self.default_dtype = default_dtype
-        self.control_inteface = control_inteface
-        self.print_timing = print_timing
-        if cuda_verbose:
-            self.compile_options = ['--ptxas-options=-v']
-        else:
-            self.compile_options = []
+        self.control_interface = control_interface
 
+        # input output processors
         if not isinstance(input_processors, list):
             input_processors = [input_processors]
         if not isinstance(output_processors, list):
             input_processors = [output_processors]
-
         self.output_processors = output_processors
         self.input_processors = input_processors
 
-        self.uid_key = uid_key
+        self._uid_key = uid_key
+        self._uid_generator = uid_generator()
 
-        self.uid_generator = uid_generator()
+        # Load all NDComponents Class
+        self._comps = self._load_components(extra_comps=extra_comps)
+        
+        # instantiated componnets, instantiated at `self.pre_run`
+        self.components = {}
 
-        # Load all NDComponents:
-        self._load_components(extra_comps=extra_comps)
+        # memory_manager created at `pre_run`
+        self.memory_manager = None
 
-        if self.print_timing:
-            start = time.time()
         # Ignore models without implementation
         models_to_be_deleted = []
         for model in comp_dict:
