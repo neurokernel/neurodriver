@@ -8,7 +8,7 @@ from pycuda.tools import dtype_to_ctype
 import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
-from BaseMembraneModel import BaseMembraneModel
+from neurokernel.LPU.NDComponents.MembraneModels.BaseMembraneModel import BaseMembraneModel
 
 class MorrisLecar(BaseMembraneModel):
     params = ['V1', 'V2', 'V3', 'V4', 'phi', 'offset',
@@ -22,14 +22,14 @@ class MorrisLecar(BaseMembraneModel):
         else:
             self.compile_options = []
 
-        self.num_comps = params_dict['V1'].size
+        self.num_comps = params_dict[self.params[0]].size
         self.params_dict = params_dict
         self.access_buffers = access_buffers
         self.dt = np.double(dt)
         self.steps = max(int(round(dt / 1e-5)), 1)
         self.debug = debug
         self.LPU_id = LPU_id
-        self.dtype = params_dict['V1'].dtype
+        self.dtype = params_dict[self.params[0]].dtype
         self.ddt = dt / self.steps
 
         self.internal_states = {
@@ -44,7 +44,7 @@ class MorrisLecar(BaseMembraneModel):
         dtypes.update({k: self.inputs[k].dtype for k in self.accesses})
         dtypes.update({k: self.params_dict[k].dtype for k in self.params})
         dtypes.update({k: self.internal_states[k].dtype for k in self.internals})
-        dtypes.update({k: self.dtype if not k == 'spike_state' else np.int32 for k in self.updates})
+        dtypes.update({k: self.dtype for k in self.updates})
         self.update_func = self.get_update_func(dtypes)
 
     def pre_run(self, update_pointers):
@@ -155,14 +155,14 @@ morris_lecar_multiple(int num_comps, %(dt)s dt, int nsteps,
 
     def get_update_func(self, dtypes):
         type_dict = {k: dtype_to_ctype(dtypes[k]) for k in dtypes}
-        type_dict.update({'fletter': 'f' if type_dict['V1'] == 'float' else ''})
+        type_dict.update({'fletter': 'f' if type_dict[self.params[0]] == 'float' else ''})
         mod = SourceModule(self.get_update_template() % type_dict,
                            options=self.compile_options)
         func = mod.get_function("morris_lecar_multiple")
         func.prepare('i'+np.dtype(dtypes['dt']).char+'i'+'P'*(len(type_dict)-2))
         func.block = (256,1,1)
         func.grid = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
-                         (self.num_comps-1) / 256 + 1), 1)
+                         (self.num_comps-1) // 256 + 1), 1)
         return func
 
 

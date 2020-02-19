@@ -10,7 +10,7 @@ import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
 from neurokernel.LPU.utils.simpleio import *
-from BaseDendriteModel import BaseDendriteModel
+from .BaseDendriteModel import BaseDendriteModel
 
 class Aggregator(BaseDendriteModel):
     accesses = ['g','V']
@@ -163,5 +163,5 @@ class Aggregator(BaseDendriteModel):
         func = mod.get_function("aggregate_I")
         func.prepare('PiiiPPPPPPiiPP')
         self.block = (32, 32, 1)
-        self.grid = ((self.num_comps - 1) / 32 + 1, 1)
+        self.grid = ((self.num_comps - 1) // 32 + 1, 1)
         return func
