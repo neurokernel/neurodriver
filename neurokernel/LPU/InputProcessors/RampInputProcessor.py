@@ -24,8 +24,7 @@ class RampInputProcessor(BaseInputProcessor):
             val = (self.stop_value - self.start_value) / self.duration *\
                   (current_time - self.start_time) \
                 + self.start_value
-        self.variables[self.var]['input'] = val * np.ones(self.num,
-                                                          dtype=self.dtypes[self.var])
+        self.variables[self.var]['input'][:] = val #* np.ones(self.num, dtype=self.dtypes[self.var])
 
     def is_input_available(self):
         return True

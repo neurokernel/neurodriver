@@ -14,12 +14,11 @@ class StepInputProcessor(BaseInputProcessor):
         self.num = len(uids)
 
     def update_input(self):
-        self.variables[self.var]['input'] = self.val * np.ones(self.num,
-                                                               self.dtypes[self.var])
+        self.variables[self.var]['input'][:] = self.val # * np.ones(self.num, self.dtypes[self.var])
 
     def is_input_available(self):
         return (self.LPU_obj.time >= self.start and
                 self.LPU_obj.time < self.stop)
 
     def post_run(self):
-        pass
+        super(StepInputProcessor, self).post_run()
