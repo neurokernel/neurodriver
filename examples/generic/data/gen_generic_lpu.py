@@ -103,9 +103,9 @@ def create_lpu_graph(lpu_name, N_sensory, N_local, N_proj):
                     G.add_node('synapse_' + 'in_port' + str(in_port_idx) + '_to_' + id,
                                **{'class': 'AlphaSynapse',
                                   'name': 'in_port' + str(in_port_idx) + '-' + name,
-                                  'ad': 0.19 * 1000,
-                                  'ar': 1.1 * 100,
-                                  'gmax': 0.003 * 1e-3,
+                                  'ad': 0.19,
+                                  'ar': 0.11,
+                                  'gmax': 0.003,
                                   'reverse': 65.0,
                                   'circuit': 'local'
                                   })
@@ -194,10 +194,10 @@ def create_lpu_graph(lpu_name, N_sensory, N_local, N_proj):
                 G.add_node(synapse_id,
                            **{'class': 'AlphaSynapse',
                               'name': name,
-                              'ar': 1.1 * 1e2,
-                              'ad': 1.9 * 1e3,
+                              'ar': 0.11,
+                              'ad': 1.9,
                               'reverse': 65.0 if G.node[post_id]['class'] is 'LeakyIAF' else 10.0,
-                              'gmax': 3 * 1e-6 if G.node[post_id]['class'] is 'LeakyIAF' else 3.1e-7,
+                              'gmax': 3 * 1e-3 if G.node[post_id]['class'] is 'LeakyIAF' else 3.1e-4,
                               'circuit': 'local'})
                 G.add_edge(pre_id, synapse_id)
                 G.add_edge(synapse_id, post_id)
@@ -285,7 +285,7 @@ def create_input(file_name, N_sensory, dt=1e-4, dur=1.0, start=0.3, stop=0.6, I_
 
     uids = ["sensory_" + str(i) for i in range(N_sensory)]
 
-    uids = np.array(uids)
+    uids = np.array(uids, dtype = 'S')
 
     I = np.zeros((Nt, N_sensory), dtype=np.float64)
     I[np.logical_and(t > start, t < stop)] = I_max
@@ -317,7 +317,7 @@ if __name__ == '__main__':
     start = 0.3
     stop = 0.6
     I_max = 0.6
-    neu_num = [np.random.randint(31, 40) for i in xrange(3)]
+    neu_num = [np.random.randint(31, 40) for i in range(3)]
 
     create_lpu(args.lpu_file_name, args.lpu, *neu_num)
     g = nx.read_gexf(args.lpu_file_name)

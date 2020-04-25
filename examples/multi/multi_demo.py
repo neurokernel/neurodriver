@@ -8,6 +8,7 @@ import argparse
 import itertools
 import random
 
+from future.utils import iteritems
 import numpy as np
 
 import data.gen_generic_lpu as g
@@ -68,7 +69,7 @@ logger = setup_logger(file_name=file_name, screen=screen)
 
 # Set number of local and projection neurons in each LPU:
 N = args.num_lpus
-neu_dict = {i: [0, args.num_local, args.num_output] for i in xrange(N)}
+neu_dict = {i: [0, args.num_local, args.num_output] for i in range(N)}
 
 # Only LPU 0 receives input and should therefore be associated with a population
 # of sensory neurons:
@@ -87,7 +88,7 @@ lpu_dict = {}
 
 # Set up several LPUs:
 man = core.Manager()
-for i, neu_num in neu_dict.iteritems():
+for i, neu_num in iteritems(neu_dict):
     lpu_entry = {}
 
     if i == 0:
@@ -123,7 +124,7 @@ for i, neu_num in neu_dict.iteritems():
     lpu_dict[id] = lpu_entry
 
 # Create connectivity patterns between each combination of LPU pairs:
-for id_0, id_1 in itertools.combinations(lpu_dict.keys(), 2):
+for id_0, id_1 in itertools.combinations(list(lpu_dict.keys()), 2):
 
     comp_dict_0 = lpu_dict[id_0]['comp_dict']
     comp_dict_1 = lpu_dict[id_1]['comp_dict']
@@ -175,13 +176,14 @@ for id_0, id_1 in itertools.combinations(lpu_dict.keys(), 2):
     # Next, define connections from LPU1 to LPU0:
     N_conn_spk_1_0 = min(len(out_ports_spk_1), len(in_ports_spk_0))
     N_conn_gpot_1_0 = min(len(out_ports_gpot_1), len(in_ports_gpot_0))
-    for src, dest in zip(random.sample(out_ports_spk_1, N_conn_spk_1_0),
-                         random.sample(in_ports_spk_0, N_conn_spk_1_0)):
+
+    for src, dest in zip(random.sample(out_ports_spk_1.identifiers, N_conn_spk_1_0),
+                         random.sample(in_ports_spk_0.identifiers, N_conn_spk_1_0)):
         pat[src, dest] = 1
         pat.interface[src, 'type'] = 'spike'
         pat.interface[dest, 'type'] = 'spike'
-    for src, dest in zip(random.sample(out_ports_gpot_1, N_conn_gpot_1_0),
-                         random.sample(in_ports_gpot_0, N_conn_gpot_1_0)):
+    for src, dest in zip(random.sample(out_ports_gpot_1.identifiers, N_conn_gpot_1_0),
+                         random.sample(in_ports_gpot_0.identifiers, N_conn_gpot_1_0)):
         pat[src, dest] = 1
         pat.interface[src, 'type'] = 'gpot'
         pat.interface[dest, 'type'] = 'gpot'

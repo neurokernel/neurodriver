@@ -1,133 +1,120 @@
 from neurokernel.LPU.NDComponents.AxonHillockModels.BaseAxonHillockModel import *
 
-class ConnorStevens(BaseAxonHillockModel):
+class HodgkinHuxley2(BaseAxonHillockModel):
     updates = ['spike_state', # (bool)
                'V' # Membrane Potential (mV)
               ]
-    accesses = ['I'] # (\mu A/cm^2 )
-    params = ['n', # state variable for activation of K channel ([0-1] unitless)
-              'm', # state variable for activation of Na channel ([0-1] unitless)
-              'h', # state variable for inactivation of Na channel ([0-1] unitless)
-              'a', # state variable for activation of A channel ([0-1] unitless)
-              'b' # state variable for inactivation of A channel ([0-1] unitless)
+    accesses = ['I'] # Current (\mu A/cm^2)
+    params = ['g_K',
+              'g_Na',
+              'g_L',
+              'E_K',
+              'E_Na',
+              'E_L'
               ]
-    internals = OrderedDict([('internalV',-65.), # Membrane Potential (mV)
-                             ('internalVprev1',-65.), # Membrane Potential (mV)
-                             ('internalVprev2',-65.) # Membrane Potential (mV)
-                            ])
-
-    def pre_run(self, update_pointers):
-        super(ConnorStevens, self).pre_run(update_pointers)
-        # if 'initV' in self.params_dict:
-        self.add_initializer('initV', 'internalVprev1', update_pointers)
-        self.add_initializer('initV', 'internalVprev2', update_pointers)
+    internals = OrderedDict([('internalV',-65.),       # Membrane Potential (mV)
+                             ('internalVprev1',-65.),  # Membrane Potential (mV)
+                             ('internalVprev2',-65.),
+                             ('n', 0.),
+                             ('m', 0.),
+                             ('h', 0.92)]) # Membrane Potential (mV)
 
     def get_update_template(self):
         template = """
 #define EXP exp%(fletter)s
 #define POW pow%(fletter)s
-
-#define		E_K		-72.
-#define		E_Na		55.
-#define		E_a		-75.
-#define		E_l		-17.
-#define		G_total		67.7
-#define		G_a		47.7
-#define		G_Na		120.
-#define		G_K		(G_total-G_a)
-#define		G_l		0.3
-#define		ms		-5.3
-#define		hs		-12.
-#define		ns		-4.3
+#define ABS fabs%(fletter)s
 
 __global__ void update(
     int num_comps,
     %(dt)s dt,
     int nsteps,
     %(I)s* g_I,
-    %(n)s* g_n,
-    %(m)s* g_m,
-    %(h)s* g_h,
-    %(a)s* g_a,
-    %(b)s* g_b,
+    %(g_K)s* g_g_K,
+    %(g_Na)s* g_g_Na,
+    %(g_L)s* g_g_L,
+    %(E_K)s* g_E_K,
+    %(E_Na)s* g_E_Na,
+    %(E_L)s* g_E_L,
     %(internalV)s* g_internalV,
     %(internalVprev1)s* g_internalVprev1,
     %(internalVprev2)s* g_internalVprev2,
+    %(n)s* g_n,
+    %(m)s* g_m,
+    %(h)s* g_h,
     %(spike_state)s* g_spike_state,
     %(V)s* g_V)
 {
-	int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int total_threads = gridDim.x * blockDim.x;
 
     %(dt)s ddt = dt*1000.; // s to ms
 
-    %(V)s V, Vprev1, Vprev2;
+    %(V)s V, Vprev1, Vprev2, dV;
     %(I)s I;
     %(spike_state)s spike;
+    %(g_Na)s g_Na;
+    %(g_K)s g_K;
+    %(g_L)s g_L;
 
-    %(n)s n, a_n, b_n, n_inf, tau_n;
-    %(m)s m, a_m, b_m, m_inf, tau_m;
-    %(h)s h, a_h, b_h, h_inf, tau_h;
-    %(a)s a, a_inf, tau_a;
-    %(b)s b, b_inf, tau_b;
+    %(E_Na)s E_Na;
+    %(E_K)s E_K;
+    %(E_L)s E_L;
 
+    %(n)s n, dn;
+    %(m)s m, dm;
+    %(h)s h, dh;
+    %(n)s a;
 
     for(int i = tid; i < num_comps; i += total_threads)
     {
         spike = 0;
+        V = g_internalV[i];
+        Vprev1 = g_internalVprev1[i];
+        Vprev2 = g_internalVprev2[i];
         I = g_I[i];
         n = g_n[i];
         m = g_m[i];
         h = g_h[i];
-        a = g_a[i];
-        b = g_b[i];
-        V = g_internalV[i];
-        Vprev1 = g_internalVprev1[i];
-        Vprev2 = g_internalVprev2[i];
+        g_Na = g_g_Na[i];
+        g_K = g_g_K[i];
+        g_L = g_g_L[i];
+        E_Na = g_E_Na[i];
+        E_K = g_E_K[i];
+        E_L = g_E_L[i];
 
         for (int j = 0; j < nsteps; ++j)
         {
-            /*
-             * Hodgkin-Huxley with shifts - 3.8 is temperature factor
-             */
-            a_m = -.1*(V+35+ms)/(EXP(-(V+35+ms)/10)-1);
-            b_m = 4*EXP(-(V+60+ms)/18);
-            m_inf = a_m/(a_m+b_m);
-            tau_m = 1/(3.8*(a_m+b_m));
+            a = exp(-(V+55)/10)-1;
+            if (ABS(a) <= 1e-7)
+                dn = (1.-n) * 0.1 - n * (0.125*EXP(-(V+65.)/80.));
+            else
+                dn = (1.-n) * (-0.01*(V+55.)/a) - n * (0.125*EXP(-(V+65)/80));
 
-            a_h = .07*EXP(-(V+60+hs)/20);
-            b_h = 1/(1+EXP(-(V+30+hs)/10));
-            h_inf = a_h/(a_h+b_h);
-            tau_h = 1/(3.8*(a_h+b_h));
+            a = exp(-(V+40.)/10.)-1.;
+            if (ABS(a) <= 1e-7)
+                dm = (1.-m) - m*(4*EXP(-(V+65)/18));
+            else
+                dm = (1.-m) * (-0.1*(V+40.)/a) - m * (4.*EXP(-(V+65.)/18.));
 
-            a_n = -.01*(V+50+ns)/(EXP(-(V+50+ns)/10)-1);
-            b_n = .125*EXP(-(V+60+ns)/80);
-            n_inf = a_n/(a_n+b_n);
-            tau_n = 2/(3.8*(a_n+b_n));
+            dh = (1.-h) * (0.07*EXP(-(V+65.)/20.)) - h / (EXP(-(V+35.)/10.)+1.);
 
-            a_inf = POW(.0761*EXP((V+94.22)/31.84)/(1+EXP((V+1.17)/28.93)),.3333);
-            tau_a = .3632+1.158/(1+EXP((V+55.96)/20.12));
-            b_inf = POW(1/(1+EXP((V+53.3)/14.54)),4);
-            tau_b = 1.24+2.678/(1+EXP((V+50)/16.027));
+            dV = I - g_Na*POW(m,3)*h*(V-E_Na) - g_K * POW(n,4) * (V-E_K) - g_L * (V-E_L);
 
-            V += ddt*(I-G_l*(V-E_l)-G_Na*h*m*m*m*(V-E_Na)-G_K*n*n*n*n*(V-E_K)-G_a*b*a*a*a*(V-E_a));
-            m += ddt*(m_inf-m)/tau_m;
-            h += ddt*(h_inf-h)/tau_h;
-            n += ddt*(n_inf-n)/tau_n;
-            a += ddt*(a_inf-a)/tau_a;
-            b += ddt*(b_inf-b)/tau_b;
+            n += ddt * dn;
+            m += ddt * dm;
+            h += ddt * dh;
+            V += ddt * dV;
 
             spike += (Vprev2<=Vprev1) && (Vprev1 >= V) && (Vprev1 > -30);
 
             Vprev2 = Vprev1;
             Vprev1 = V;
-
         }
+
         g_n[i] = n;
         g_m[i] = m;
         g_h[i] = h;
-        g_a[i] = a;
-        g_b[i] = b;
         g_V[i] = V;
         g_internalV[i] = V;
         g_internalVprev1[i] = Vprev1;
@@ -137,6 +124,7 @@ __global__ void update(
 }
 """
         return template
+
 
 if __name__ == '__main__':
     import argparse
@@ -154,7 +142,7 @@ if __name__ == '__main__':
     import neurokernel.mpi_relaunch
 
     dt = 1e-4
-    dur = 0.3
+    dur = 1.0
     steps = int(dur/dt)
 
     parser = argparse.ArgumentParser()
@@ -182,18 +170,16 @@ if __name__ == '__main__':
     G = nx.MultiDiGraph()
 
     G.add_node('neuron0', **{
-               'class': 'ConnorStevens',
-               'name': 'ConnorStevens',
+               'class': 'HodgkinHuxley',
+               'name': 'HodgkinHuxley',
                'n': 0.,
                'm': 0.,
                'h': 1.,
-               'a': 0.,
-               'b': 0.,
                })
 
     comp_dict, conns = LPU.graph_to_dicts(G)
 
-    fl_input_processor = StepInputProcessor('I', ['neuron0'], 40, 0.15, 0.25)
+    fl_input_processor = StepInputProcessor('I', ['neuron0'], 40, 0.2, 0.8)
     fl_output_processor = FileOutputProcessor([('spike_state', None),('V', None)], 'new_output.h5', sample_interval=1)
 
     man.add(LPU, 'ge', dt, comp_dict, conns,
@@ -207,28 +193,15 @@ if __name__ == '__main__':
     # plot the result
     import h5py
     import matplotlib
-    matplotlib.use('Agg')
+    matplotlib.use('PS')
     import matplotlib.pyplot as plt
 
     f = h5py.File('new_output.h5')
     t = np.arange(0, args.steps)*dt
 
     plt.figure()
-    plt.subplot(211)
     plt.plot(t,list(f['V'].values())[0])
     plt.xlabel('time, [s]')
     plt.ylabel('Voltage, [mV]')
-    plt.title('Connor-Stevens Neuron')
-    plt.xlim([0, dur])
-    plt.ylim([-70, 60])
-    plt.grid()
-    plt.subplot(212)
-    spk = f['spike_state/data'].value.flatten().nonzero()[0]
-    plt.stem(t[spk],np.ones((len(spk),)))
-    plt.xlabel('time, [s]')
-    plt.ylabel('Spike')
-    plt.xlim([0, dur])
-    plt.ylim([0, 1.2])
-    plt.grid()
-    plt.tight_layout()
-    plt.savefig('csn.png',dpi=300)
+    plt.title('Hodgkin-Huxley Neuron')
+    plt.savefig('hhn.png',dpi=300)

@@ -1,81 +1,24 @@
-
-from collections import OrderedDict
-
-import numpy as np
-
-import pycuda.gpuarray as garray
-from pycuda.tools import dtype_to_ctype
-import pycuda.driver as cuda
-from pycuda.compiler import SourceModule
-
-from BaseAxonHillockModel import BaseAxonHillockModel
+from neurokernel.LPU.NDComponents.AxonHillockModels.BaseAxonHillockModel import *
 
 class HodgkinHuxley(BaseAxonHillockModel):
-    updates = ['spike_state', 'V']
-    accesses = ['I']
-    params = ['n','m','h']
-    internals = OrderedDict([('internalV',-65.)])
-
-    def __init__(self, params_dict, access_buffers, dt,
-                 debug=False, LPU_id=None, cuda_verbose=True):
-        if cuda_verbose:
-            self.compile_options = ['--ptxas-options=-v']
-        else:
-            self.compile_options = []
-
-        self.num_comps = params_dict['n'].size
-        self.params_dict = params_dict
-        self.access_buffers = access_buffers
-
-        self.debug = debug
-        self.LPU_id = LPU_id
-        self.dtype = params_dict['n'].dtype
-
-        self.dt = np.double(dt)
-        self.ddt = np.double(1e-6)
-        self.steps = np.int32(max( int(self.dt/self.ddt), 1 ))
-
-        self.internal_states = {
-            c: garray.zeros(self.num_comps, dtype = self.dtype)+self.internals[c] \
-            for c in self.internals}
-
-        self.inputs = {
-            k: garray.empty(self.num_comps, dtype = self.access_buffers[k].dtype)\
-            for k in self.accesses}
-
-        dtypes = {'dt': self.dtype}
-        dtypes.update({k: self.inputs[k].dtype for k in self.accesses})
-        dtypes.update({k: self.params_dict[k].dtype for k in self.params})
-        dtypes.update({k: self.internal_states[k].dtype for k in self.internals})
-        dtypes.update({k: self.dtype if not k == 'spike_state' else np.int32 for k in self.updates})
-        self.update_func = self.get_update_func(dtypes)
-
-    def pre_run(self, update_pointers):
-        if self.params_dict.has_key('initV'):
-            cuda.memcpy_dtod(int(update_pointers['V']),
-                             self.params_dict['initV'].gpudata,
-                             self.params_dict['initV'].nbytes)
-            cuda.memcpy_dtod(self.internal_states['internalV'].gpudata,
-                             self.params_dict['initV'].gpudata,
-                             self.params_dict['initV'].nbytes)
-
-
-    def run_step(self, update_pointers, st=None):
-        for k in self.inputs:
-            self.sum_in_variable(k, self.inputs[k], st=st)
-
-        self.update_func.prepared_async_call(
-            self.update_func.grid, self.update_func.block, st,
-            self.num_comps, self.ddt, self.steps,
-            *[self.inputs[k].gpudata for k in self.accesses]+\
-            [self.params_dict[k].gpudata for k in self.params]+\
-            [self.internal_states[k].gpudata for k in self.internals]+\
-            [update_pointers[k] for k in self.updates])
+    updates = ['spike_state', # (bool)
+               'V' # Membrane Potential (mV)
+              ]
+    accesses = ['I'] # Current (\mu A/cm^2)
+    params = ['n', # state variable for activation of K channel ([0-1] unitless)
+              'm', # state variable for activation of Na channel ([0-1] unitless)
+              'h'  # state variable for inactivation of Na channel ([0-1] unitless)
+              ]
+    internals = OrderedDict([('internalV',-65.),       # Membrane Potential (mV)
+                             ('internalVprev1',-65.),  # Membrane Potential (mV)
+                             ('internalVprev2',-65.)]) # Membrane Potential (mV)
 
     def get_update_template(self):
         template = """
 #define EXP exp%(fletter)s
 #define POW pow%(fletter)s
+#define ABS fabs%(fletter)s
+#define MIN fmin%(fletter)s
 
 __global__ void update(
     int num_comps,
@@ -86,6 +29,8 @@ __global__ void update(
     %(m)s* g_m,
     %(h)s* g_h,
     %(internalV)s* g_internalV,
+    %(internalVprev1)s* g_internalVprev1,
+    %(internalVprev2)s* g_internalVprev2,
     %(spike_state)s* g_spike_state,
     %(V)s* g_V)
 {
@@ -104,8 +49,10 @@ __global__ void update(
 
     for(int i = tid; i < num_comps; i += total_threads)
     {
-        spike = 0;
+        spike = 0.0;
         V = g_internalV[i];
+        Vprev1 = g_internalVprev1[i];
+        Vprev2 = g_internalVprev2[i];
         I = g_I[i];
         n = g_n[i];
         m = g_m[i];
@@ -114,13 +61,13 @@ __global__ void update(
         for (int j = 0; j < nsteps; ++j)
         {
             a = exp(-(V+55)/10)-1;
-            if (abs(a) <= 1e-7)
+            if (ABS(a) <= 1e-7)
                 dn = (1.-n) * 0.1 - n * (0.125*EXP(-(V+65.)/80.));
             else
                 dn = (1.-n) * (-0.01*(V+55.)/a) - n * (0.125*EXP(-(V+65)/80));
 
             a = exp(-(V+40.)/10.)-1.;
-            if (abs(a) <= 1e-7)
+            if (ABS(a) <= 1e-7)
                 dm = (1.-m) - m*(4*EXP(-(V+65)/18));
             else
                 dm = (1.-m) * (-0.1*(V+40.)/a) - m * (4.*EXP(-(V+65.)/18.));
@@ -145,24 +92,13 @@ __global__ void update(
         g_h[i] = h;
         g_V[i] = V;
         g_internalV[i] = V;
-        g_spike_state[i] = (spike > 0);
+        g_internalVprev1[i] = Vprev1;
+        g_internalVprev2[i] = Vprev2;
+        g_spike_state[i] = MIN(spike, 1.0);
     }
 }
 """
         return template
-
-    def get_update_func(self, dtypes):
-        type_dict = {k: dtype_to_ctype(dtypes[k]) for k in dtypes}
-        type_dict.update({'fletter': 'f' if type_dict['n'] == 'float' else ''})
-        mod = SourceModule(self.get_update_template() % type_dict,
-                           options=self.compile_options)
-        func = mod.get_function("update")
-        func.prepare('i'+np.dtype(dtypes['dt']).char+'i'+'P'*(len(type_dict)-2))
-        func.block = (128,1,1)
-        func.grid = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
-                         (self.num_comps-1) / 128 + 1), 1)
-        return func
-
 
 
 if __name__ == '__main__':
@@ -239,7 +175,7 @@ if __name__ == '__main__':
     t = np.arange(0, args.steps)*dt
 
     plt.figure()
-    plt.plot(t,f['V'].values()[0])
+    plt.plot(t,list(f['V'].values())[0])
     plt.xlabel('time, [s]')
     plt.ylabel('Voltage, [mV]')
     plt.title('Hodgkin-Huxley Neuron')

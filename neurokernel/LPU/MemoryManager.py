@@ -1,7 +1,12 @@
-import utils.parray as parray
+
+from future.utils import iteritems
+
+from .utils import parray
 import pycuda.gpuarray as garray
-from pycuda.tools import dtype_to_ctype
-import pycuda.elementwise as elementwise
+from pycuda.tools import dtype_to_ctype, context_dependent_memoize
+from pycuda.compiler import SourceModule
+import pycuda.driver as cuda
+# import pycuda.elementwise as elementwise
 
 import numpy as np
 import numbers
@@ -18,7 +23,7 @@ class MemoryManager(object):
         self.variables = {}
         self.parameters = {}
         self.mapping = {}          #Mapping from [model_name->variable/parameter]->pos
-        
+
     def get_buffer(self, variable_name):
         return self.variables[variable_name]['buffer']
 
@@ -31,39 +36,53 @@ class MemoryManager(object):
         if variable and not model:
             assert(variable in self.variables)
             d = self.variables[variable]
-            dest_inds = np.arange(0, d['cumlen'][-1],1)
+            dest_inds = np.arange(0, d['cumlen'][-1],1).astype(np.int32)
             buff = d['buffer']
-            dest_mem = garray.GPUArray((1,buff.size),buff.dtype,
+            dest_mem = garray.GPUArray((1,d['cumlen'][-1]),buff.dtype,
                                        gpudata=int(buff.gpudata)+\
                                        buff.current*buff.ld*\
                                        buff.dtype.itemsize)
-            self._fill_zeros_kernel(dest_mem, garray.to_gpu(dest_inds))
-        elif model and not variable: 
-            for var, d in self.variables.iteritems():
+            dest_mem.fill(0)
+        elif model and not variable:
+            for var, d in iteritems(self.variables):
                 if model in d['models']:
                     mind = d['models'].index(model)
                     stind = d['cumlen'][mind]
-                    dest_inds = np.arange(stind, stind+d['len'][mind],1)
+                    dest_inds = np.arange(stind, stind+d['len'][mind],1).astype(np.int32)
                     buff = d['buffer']
-                    dest_mem = garray.GPUArray((1,buff.size),buff.dtype,
-                                               gpudata=int(buff.gpudata)+\
-                                               buff.current*buff.ld*\
-                                               buff.dtype.itemsize)
-                    self._fill_zeros_kernel(dest_mem, garray.to_gpu(dest_inds))
+                    # dest_mem = garray.GPUArray((1,buff.size),buff.dtype,
+                    #                            gpudata=int(buff.gpudata)+\
+                    #                            buff.current*buff.ld*\
+                    #                            buff.dtype.itemsize)
+                    dest_mem = int(buff.gpudata)+buff.current*buff.ld*buff.dtype.itemsize
+                    self._fill_zeros_kernel(var, model, dest_mem)
         else:
             assert(variable in self.variables)
             d = self.variables[variable]
             if model in d['models']:
                 mind = d['models'].index(model)
                 stind = d['cumlen'][mind]
-                dest_inds = np.arange(stind, stind+d['len'][mind],1)
+                dest_inds = np.arange(stind, stind+d['len'][mind],1).astype(np.int32)
                 buff = d['buffer']
-                dest_mem = garray.GPUArray((1,buff.size),buff.dtype,
-                                           gpudata=int(buff.gpudata)+\
-                                           buff.current*buff.ld*\
-                                           buff.dtype.itemsize)
-                self._fill_zeros_kernel(dest_mem, garray.to_gpu(dest_inds))
-        
+                # dest_mem = garray.GPUArray((1,buff.size),buff.dtype,
+                #                            gpudata=int(buff.gpudata)+\
+                #                            buff.current*buff.ld*\
+                #                            buff.dtype.itemsize)
+                dest_mem = int(buff.gpudata)+buff.current*buff.ld*buff.dtype.itemsize
+                self._fill_zeros_kernel(variable, model, dest_mem)
+
+    def precompile_fill_zeros(self):
+        self.fill_zeros_func = {}
+        self.dest_inds = {}
+        for var, d in iteritems(self.variables):
+            self.fill_zeros_func[var] = get_fill_zeros_kernel(d['buffer'].dtype)
+            self.dest_inds[var] = {}
+            for model in d['models']:
+                mind = d['models'].index(model)
+                stind = d['cumlen'][mind]
+                dest_inds = np.arange(stind, stind+d['len'][mind],1).astype(np.int32)
+                self.dest_inds[var][model] = garray.to_gpu(dest_inds)
+
     def mutate_parameter(self, model_name, param, transform):
         pass
 
@@ -73,11 +92,11 @@ class MemoryManager(object):
         self.variables[variable_name] = {'buffer': \
                             CircularArray(size, buffer_length, dtype, init)}
         self.variables[variable_name].update(info)
-            
+
     def params_htod(self, model_name, param_dict, dtype=np.double):
         if model_name in self.parameters:
-            assert(not (set(self.parameters[model_name].keys()) &
-                        set(param_dict.keys())))
+            assert(not (set(self.parameters[model_name]) &
+                        set(param_dict)))
         else:
             self.parameters[model_name] = {}
 
@@ -85,46 +104,92 @@ class MemoryManager(object):
             if k in ['pre','npre','cumpre']:
                 self.parameters[model_name][k] = \
                                 {var: garray.to_gpu(np.array(v[var],np.int32))\
-                                 for var in v.keys()}
+                                 for var in v}
                 continue
             if k=='conn_data':
                 cd = {}
                 for var,data in v.items():
                     cd[var] = {}
                     for d_key,d in data.items():
-                        if not all([isinstance(i,numbers.Number) for i in d]):
+                        if isinstance(d, list):
+                            tmp = np.array(d)
+                            if not np.issubdtype(tmp.dtype, np.number):
+                                continue
+                        elif isinstance(d, dict):
+                            continue
+                        else:
                             continue
                         if d_key=='delay':
-                            cd[var][d_key] = garray.to_gpu(np.array(d, np.int32))
+                            cd[var][d_key] = garray.to_gpu(tmp.astype(np.int32))
                         else:
-                            cd[var][d_key] = garray.to_gpu(np.array(d, dtype))
+                            cd[var][d_key] = garray.to_gpu(tmp.astype(dtype))
                 self.parameters[model_name]['conn_data'] = cd
-            if not all([isinstance(i,numbers.Number) for i in v]): continue
-            self.parameters[model_name][k] = garray.to_gpu(np.array(v, dtype))
-            
+            if isinstance(v, list):
+                tmp = np.array(v)
+                if not np.issubdtype(tmp.dtype, np.number):
+                    continue
+            elif isinstance(v, dict):
+                continue
+            else:
+                continue
+            self.parameters[model_name][k] = garray.to_gpu(tmp.astype(dtype))
+
     def step(self):
         for d in self.variables.values():
             d['buffer'].step()
 
-    def _fill_zeros_kernel(self, dest, inds):
-        """
-        Set `dest[inds[i]] = 0 for i in range(len(inds))`
-        """
+    def _fill_zeros_kernel(self, var, model, dest):
+        func = self.fill_zeros_func[var]
+        inds = self.dest_inds[var][model]
+        func.prepared_async_call(
+            func.grid, func.block, None,
+            dest, inds.gpudata, inds.size)
 
-        try:
-            func = self._fill_zeros_kernel.cache[(inds.dtype, dest.dtype)]
-        except KeyError:
-            inds_ctype = dtype_to_ctype(inds.dtype)
-            data_ctype = dtype_to_ctype(dest.dtype)
-            v = ("{data_ctype} *dest," +\
-                 "{inds_ctype} *inds").format(\
-                        data_ctype=data_ctype,inds_ctype=inds_ctype)
-            func = elementwise.ElementwiseKernel(v,\
-            "dest[inds[i]] =0")
-            self._fill_zeros_kernel.cache[(inds.dtype, dest.dtype)] = func
-        func(dest, inds, range=slice(0, len(inds), 1) )
+    # def _fill_zeros_kernel(self, dest, inds):
+    #     """
+    #     Set `dest[inds[i]] = 0 for i in range(len(inds))`
+    #     """
+    #
+    #     try:
+    #         func = self._fill_zeros_kernel.cache[(inds.dtype, dest.dtype)]
+    #     except KeyError:
+    #         inds_ctype = dtype_to_ctype(inds.dtype)
+    #         data_ctype = dtype_to_ctype(dest.dtype)
+    #         v = ("{data_ctype} *dest," +\
+    #              "{inds_ctype} *inds").format(\
+    #                     data_ctype=data_ctype,inds_ctype=inds_ctype)
+    #         func = elementwise.ElementwiseKernel(v,\
+    #         "dest[inds[i]] =0")
+    #         self._fill_zeros_kernel.cache[(inds.dtype, dest.dtype)] = func
+    #     func(dest, inds, range=slice(0, len(inds), 1) )
+    #
+    # _fill_zeros_kernel.cache = {}
 
-    _fill_zeros_kernel.cache = {}
+
+@context_dependent_memoize
+def get_fill_zeros_kernel(data_dtype):
+    template = """
+__global__ void update(%(data_ctype)s* dest,
+                       %(inds_ctype)s* inds,
+                       int N)
+{
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    int total_threads = gridDim.x * blockDim.x;
+
+    for(int i = tid; i < N; i += total_threads)
+    {
+        dest[inds[i]] = 0;
+    }
+}
+"""
+    mod = SourceModule(template % {"data_ctype": dtype_to_ctype(data_dtype),
+                                   "inds_ctype": dtype_to_ctype(np.int32)})
+    func = mod.get_function("update")
+    func.prepare('PPi')
+    func.block = (128,1,1)
+    func.grid = (16 * cuda.Context.get_device().MULTIPROCESSOR_COUNT, 1)
+    return func
+
 
 class CircularArray(object):
     """
@@ -164,7 +229,7 @@ class CircularArray(object):
         self.size = size
         if not isinstance(dtype, np.dtype): dtype = np.dtype(dtype)
         self.dtype = dtype
-        
+
         self.buffer_length = buffer_length
         if init:
             try:
@@ -180,8 +245,8 @@ class CircularArray(object):
         self.current = 0
         self.gpudata = self.parr.gpudata
         self.ld = self.parr.ld
-        
-        
+
+
     def step(self):
         """
         Advance indices of current graded potential and spiking neuron values.
