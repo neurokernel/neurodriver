@@ -101,7 +101,7 @@ class LPU(Module):
                              'port_type': 'spike' if data['spiking'] else 'gpot',
                              'port_io': 'out',
                              'class': 'Port'}
-                g_new.add_node(new_id, port_data)
+                g_new.add_node(new_id, **port_data)
                 edges_to_out_ports.append((id, new_id))
                 del data['selector']
 
@@ -125,7 +125,7 @@ class LPU(Module):
                 for a in ['model', 'public', 'spiking','extern']:
                     if a in data: del data[a]
 
-                g_new.add_node(id, attr_dict=data)
+                g_new.add_node(id, **data)
 
         # Create synapse nodes for each edge in original graph and connect them to
         # the source/dest neuron/port nodes:
@@ -140,13 +140,13 @@ class LPU(Module):
             if 'id' in data: del data['id']
 
             new_id = gen_new_id()
-            g_new.add_node(new_id, attr_dict=data)
-            g_new.add_edge(from_id, new_id, attr_dict={})
-            g_new.add_edge(new_id, to_id, attr_dict={})
+            g_new.add_node(new_id, **data)
+            g_new.add_edge(from_id, new_id)
+            g_new.add_edge(new_id, to_id)
 
         # Connect output ports to the neurons that emit data through them:
         for from_id, to_id in edges_to_out_ports:
-            g_new.add_edge(from_id, to_id, attr_dict={})
+            g_new.add_edge(from_id, to_id)
 
         return g_new
 
