@@ -12,8 +12,7 @@ class HodgkinHuxley2(BaseAxonHillockModel):
               'E_Na',
               'E_L'
               ]
-    internals = OrderedDict([('internalV',-65.),       # Membrane Potential (mV)
-                             ('internalVprev1',-65.),  # Membrane Potential (mV)
+    internals = OrderedDict([('internalVprev1',-65.),  # Membrane Potential (mV)
                              ('internalVprev2',-65.),
                              ('n', 0.),
                              ('m', 0.),
@@ -36,7 +35,6 @@ __global__ void update(
     %(E_K)s* g_E_K,
     %(E_Na)s* g_E_Na,
     %(E_L)s* g_E_L,
-    %(internalV)s* g_internalV,
     %(internalVprev1)s* g_internalVprev1,
     %(internalVprev2)s* g_internalVprev2,
     %(n)s* g_n,
@@ -69,7 +67,7 @@ __global__ void update(
     for(int i = tid; i < num_comps; i += total_threads)
     {
         spike = 0;
-        V = g_internalV[i];
+        V = g_internalVprev1[i];
         Vprev1 = g_internalVprev1[i];
         Vprev2 = g_internalVprev2[i];
         I = g_I[i];
@@ -116,7 +114,6 @@ __global__ void update(
         g_m[i] = m;
         g_h[i] = h;
         g_V[i] = V;
-        g_internalV[i] = V;
         g_internalVprev1[i] = Vprev1;
         g_internalVprev2[i] = Vprev2;
         g_spike_state[i] = (spike > 0);
@@ -170,11 +167,14 @@ if __name__ == '__main__':
     G = nx.MultiDiGraph()
 
     G.add_node('neuron0', **{
-               'class': 'HodgkinHuxley',
-               'name': 'HodgkinHuxley',
-               'n': 0.,
-               'm': 0.,
-               'h': 1.,
+               'class': 'HodgkinHuxley2',
+               'name': 'HodgkinHuxley2',
+               'g_K': 36.0,                                                    │························································
+               'g_Na': 120.0,                                                  │························································
+               'g_L': 0.3,                                                     │························································
+               'E_K': -77.0,                                                   │························································
+               'E_Na': 50.0,                                                   │························································
+               'E_L': -54.387,
                })
 
     comp_dict, conns = LPU.graph_to_dicts(G)
