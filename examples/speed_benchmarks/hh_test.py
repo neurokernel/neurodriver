@@ -65,11 +65,11 @@ def create_graph(N):
                     })
     return G
 
-def simulation(dt, N, output_n):
+def simulation(dt, N, output_n, nsteps = 10000):
     start_time = time.time()
 
-    dur = 1.0 / 100
-    steps = int(dur/dt)
+    dur = nsteps * dt
+    steps = nsteps
 
     man = core.Manager()
 
@@ -126,7 +126,7 @@ if __name__ == '__main__':
             sim_time.append([])
             compile_and_sim_time.append([])
             for t in range(n_sim + 1):
-                c, s = simulation(dt, N, i * n_sim + t)
+                c, s = simulation(dt, N, i * n_sim + t, 10000)
                 sim_time[i].append(s)
                 compile_and_sim_time[i].append(c)
             sim_time[i].pop(0) # discard first result
