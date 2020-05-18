@@ -492,6 +492,7 @@ class LPU(Module):
             if not model in self._comps and not model in ['Port','Input']:
                 self.log_info("Ignoring Model %s: Can not find implementation"
                               % model)
+                raise NotImplementedError("Model %s: Can not find implementation" % model)
                 models_to_be_deleted.append(model)
         for model in models_to_be_deleted:
             del comp_dict[model]
@@ -1205,12 +1206,12 @@ class LPU(Module):
             attribs['conn_data'] = data
 
     def post_run(self):
-        super(LPU, self).post_run()
         for comp in self.components.values():
             comp.post_run()
         # Cycle through IO processors as well
         for p in self.input_processors: p.post_run()
         for p in self.output_processors: p.post_run()
+        super(LPU, self).post_run()
         if self.print_timing:
             print('time spent on:', self.timing)
 
