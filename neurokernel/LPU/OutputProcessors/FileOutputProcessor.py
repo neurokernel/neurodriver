@@ -145,13 +145,13 @@ class FileOutputProcessor(BaseOutputProcessor):
         if self.scount > 0:
             var = 'spike_state'
             t, index = np.where(self.cache[var].get()[:self.scount,:]!=0)
-            t *= self.sim_dt
+            t = t * self.sim_dt
             nspikes = index.size
             if nspikes:
                 self.h5file[var+'/data/time'].resize(
-                        (self.h5file[var + '/data'].shape[0] + nspikes,))
+                        (self.h5file[var + '/data/time'].shape[0] + nspikes,))
                 self.h5file[var+'/data/index'].resize(
-                        (self.h5file[var + '/data'].shape[0] + nspikes,))
+                        (self.h5file[var + '/data/index'].shape[0] + nspikes,))
                 self.h5file[var + '/data/time'][-nspikes:] = t+self.stime_shift
                 self.h5file[var + '/data/index'][-nspikes:] = index.astype(np.int32)
         self.h5file.flush()
