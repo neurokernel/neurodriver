@@ -537,15 +537,16 @@ class LPU(Module):
         self.LPU_id = id
         self.dt = dt
         self.time = 0
-        self.debug = debug
+        self._debug = debug
         self.device = device
-        self.default_dtype = default_dtype
+        self._default_dtype = default_dtype
         self.control_inteface = control_inteface
-        self.print_timing = print_timing
+        self._print_timing = print_timing
         if cuda_verbose:
-            self.compile_options = ['--ptxas-options=-v']
+            self._compile_options = ['--ptxas-options=-v']
         else:
-            self.compile_options = []
+            self._compile_options = []
+
         if isinstance(graph_type, dict):
         # for backward compatibility where the two arguments are comp_dict and conn_list
             comp_dict = graph_type
@@ -623,14 +624,14 @@ class LPU(Module):
         self.output_processors = output_processors
         self.input_processors = input_processors
 
-        self.uid_key = uid_key
+        self._uid_key = uid_key
 
-        self.uid_generator = uid_generator()
+        self._uid_generator = uid_generator()
 
         # Load all NDComponents:
         self._load_components(extra_comps=extra_comps)
 
-        if self.print_timing:
+        if self._print_timing:
             start = time.time()
         # Ignore models without implementation
         models_to_be_deleted = []
@@ -644,13 +645,13 @@ class LPU(Module):
             del comp_dict[model]
 
         # Assume zero delay by default
-        self.variable_delay_map = {}
+        self._variable_delay_map = {}
 
         # Generate a uid to model map of components
-        self.uid_model_map = {}
+        self._uid_model_map = {}
         for model,attribs in iteritems(comp_dict):
             for i,uid in enumerate(attribs[uid_key]):
-                self.uid_model_map[uid] = model
+                self._uid_model_map[uid] = model
 
 
         # Map from post synaptic component to aggregator uid
@@ -660,13 +661,13 @@ class LPU(Module):
         #start = time.time()
 
         conns = []
-        self.in_port_vars = {}
-        self.out_port_conns = []
+        self._in_port_vars = {}
+        self._out_port_conns = []
         comp_uid_order = {}
         for model, attribs in comp_dict.items():
             comp_uid_order[model] = {uid: i for i, uid in enumerate(attribs[uid_key])}
 
-        if self.print_timing:
+        if self._print_timing:
             self.log_info("Elapsed time for processing comp_dict: {:.3f} seconds".format(time.time()-start))
             start = time.time()
         # Process connections between components, remove inconsitent connections
@@ -683,11 +684,11 @@ class LPU(Module):
 
         for pre, post, data in conn_list:
             try:
-                pre_model = self.uid_model_map[pre]
+                pre_model = self._uid_model_map[pre]
             except KeyError:
                 continue
             try:
-                post_model = self.uid_model_map[post]
+                post_model = self._uid_model_map[post]
             except KeyError:
                 continue
 
@@ -745,9 +746,9 @@ class LPU(Module):
 
                 if g_in_pre_update:
                     agg[post][-1].update(data)
-                    self.variable_delay_map['g'] = max(data['delay'],
-                                    self.variable_delay_map['g'] if 'g' in \
-                                    self.variable_delay_map else 0)
+                    self._variable_delay_map['g'] = max(data['delay'],
+                                    self._variable_delay_map['g'] if 'g' in \
+                                    self._variable_delay_map else 0)
 
 
             # Ensure consistency
@@ -787,29 +788,29 @@ class LPU(Module):
                         agg[post] = [{'pre':post,'variable':'V'},
                                      data]
                     if post not in agg_map:
-                        uid = self.uid_generator.generate_uid()
+                        uid = self._uid_generator.generate_uid()
                         agg_map[post] = uid
-                    self.variable_delay_map['g'] = max(data['delay'],
-                                    self.variable_delay_map['g'] if 'g' in \
-                                    self.variable_delay_map else 0)
+                    self._variable_delay_map['g'] = max(data['delay'],
+                                    self._variable_delay_map['g'] if 'g' in \
+                                    self._variable_delay_map else 0)
 
                 elif pre_model == 'Port':
                     if not 'variable' in data:
                         data['variable'] = post_accesses[0]
-                    if not data['variable'] in self.in_port_vars:
-                        self.in_port_vars[data['variable']] = []
+                    if not data['variable'] in self._in_port_vars:
+                        self._in_port_vars[data['variable']] = []
                         in_port_vars_set[data['variable']] = set()
                     if pre not in in_port_vars_set[data['variable']]:
-                        self.in_port_vars[data['variable']].append(pre)
+                        self._in_port_vars[data['variable']].append(pre)
                         in_port_vars_set[data['variable']].add(pre)
                     conns.append((pre, post, data))
-                    self.variable_delay_map[data['variable']] = max(data['delay'],
-                            self.variable_delay_map[data['variable']] if \
-                            data['variable'] in self.variable_delay_map else 0)
+                    self._variable_delay_map[data['variable']] = max(data['delay'],
+                            self._variable_delay_map[data['variable']] if \
+                            data['variable'] in self._variable_delay_map else 0)
                 elif post_model == 'Port':
                     if not 'variable' in data:
                         data['variable'] = pre_updates[0]
-                    self.out_port_conns.append((pre, post, data['variable']))
+                    self._out_port_conns.append((pre, post, data['variable']))
                 else:
                     self.log_info("Ignoring connection %s -> %s"%(pre,post))
                 continue
@@ -820,14 +821,14 @@ class LPU(Module):
             elif not (var in pre_updates_set and var in post_accesses_set):
                 continue
             data['variable'] = var
-            self.variable_delay_map[data['variable']] = max(data['delay'],
-                            self.variable_delay_map[data['variable']] if \
-                            data['variable'] in self.variable_delay_map else 0)
+            self._variable_delay_map[data['variable']] = max(data['delay'],
+                            self._variable_delay_map[data['variable']] if \
+                            data['variable'] in self._variable_delay_map else 0)
             # connection to Aggregator will be added later
             if 'Aggregator' not in post_model:
                 conns.append((pre,post,data))
 
-        if self.print_timing:
+        if self._print_timing:
             self.log_info("Elapsed time for processing conn_list: {:.3f} seconds".format(time.time()-start))
             start = time.time()
 
@@ -844,7 +845,7 @@ class LPU(Module):
                 keys = [k for k in comp_dict['Aggregator'] if k != uid_key]
                 comp_dict['Aggregator'][uid_key].append(uid)
                 agg_uid_key_set.add(uid)
-                self.uid_model_map[uid] = 'Aggregator'
+                self._uid_model_map[uid] = 'Aggregator'
                 for k in keys:
                     comp_dict['Aggregator'][k].append(str(uid))
             for conn in conn_list:
@@ -856,7 +857,7 @@ class LPU(Module):
             # in conn_list with 'variable' 'V' is the same neuron as post
             if post == [tmp['pre'] for tmp in conn_list if tmp['variable']=='V'][0]:
                 conns.append((uid,post,{'variable':'I', 'delay': 0}))
-        if self.print_timing:
+        if self._print_timing:
             self.log_info("Elapsed time for processing aggregator: {:.3f} seconds".format(time.time()-start))
             start = time.time()
 
@@ -873,19 +874,19 @@ class LPU(Module):
             self.conn_dict[post][var]['pre'].append(pre)
             for k in data: self.conn_dict[post][var][k].append(data[k])
 
-        if self.print_timing:
+        if self._print_timing:
             self.log_info("Elapsed time for repackaging connections: {:.3f} seconds".format(time.time()-start))
             start = time.time()
 
         # Add connections for component with no incoming connections
-        for uid, model in iteritems(self.uid_model_map):
+        for uid, model in iteritems(self._uid_model_map):
             if model == 'Port':
                 continue
             for var in self._comps[model]['accesses']:
                 if ((not uid in self.conn_dict or not var in self.conn_dict[uid])):
-                    pre = self.uid_generator.generate_uid(input=True)
-                    if not var in self.variable_delay_map:
-                        self.variable_delay_map[var]=0
+                    pre = self._uid_generator.generate_uid(input=True)
+                    if not var in self._variable_delay_map:
+                        self._variable_delay_map[var]=0
                     if not uid in self.conn_dict: self.conn_dict[uid] = {}
                     if model == 'Aggregator' and var == 'g':
                         self.conn_dict[uid][var] = {'pre':[pre],'delay':[0],
@@ -895,39 +896,39 @@ class LPU(Module):
                     if not 'Input' in comp_dict:
                         comp_dict['Input'] = {}
                     if not var in comp_dict['Input']:
-                        comp_dict['Input'][var] = {self.uid_key: []}
-                    comp_dict['Input'][var][self.uid_key].append(pre)
+                        comp_dict['Input'][var] = {self._uid_key: []}
+                    comp_dict['Input'][var][self._uid_key].append(pre)
 
-        if self.print_timing:
+        if self._print_timing:
             self.log_info("Elapsed time for adding connections for component with no incoming connections: {:.3f} seconds".format(time.time()-start))
             start = time.time()
 
         # Optimize ordering (TODO)
-        self.uid_ind_map = {m:{uid:i for i,uid in enumerate(n[uid_key])}
+        self._uid_ind_map = {m:{uid:i for i,uid in enumerate(n[uid_key])}
                             for m,n in comp_dict.items() if not m=='Input'}
 
         if 'Input' in comp_dict:
-            self.uid_ind_map['Input'] = {var:{uid:i for i, uid in enumerate(d[uid_key])}
+            self._uid_ind_map['Input'] = {var:{uid:i for i, uid in enumerate(d[uid_key])}
                                          for var, d in comp_dict['Input'].items()}
 
         # Reorder components
         for m, n in comp_dict.items():
             if m=='Input':
                 for var, d in n.items():
-                    order = np.argsort([self.uid_ind_map[m][var][uid] for uid in d[uid_key]])
+                    order = np.argsort([self._uid_ind_map[m][var][uid] for uid in d[uid_key]])
                     d[uid_key] = [d[uid_key][i] for i in order]
                 continue
 
-            order = np.argsort([self.uid_ind_map[m][uid] for uid in n[uid_key]])
+            order = np.argsort([self._uid_ind_map[m][uid] for uid in n[uid_key]])
             for k in n:
                 n[k] = [n[k][i] for i in order]
 
         # Reorder input port variables
-        for var, uids in self.in_port_vars.items():
-            order = np.argsort([self.uid_ind_map['Port'][uid] for uid in uids])
-            self.in_port_vars[var] = [uids[i] for i in order]
+        for var, uids in self._in_port_vars.items():
+            order = np.argsort([self._uid_ind_map['Port'][uid] for uid in uids])
+            self._in_port_vars[var] = [uids[i] for i in order]
 
-        if self.print_timing:
+        if self._print_timing:
             self.log_info("Elapsed time for optimizing ordering: {:.3f} seconds".format(time.time()-start))
 
         # Try to figure out order of stepping through components
@@ -958,18 +959,18 @@ class LPU(Module):
                         deps[i].append(j)
 
 
-        self.exec_order = []
+        self._exec_order = []
         for i, model in enumerate(models):
-            if not model in self.exec_order: self.exec_order.append(model)
+            if not model in self._exec_order: self._exec_order.append(model)
             for j in deps[i]:
                 try:
-                    if self.exec_order.index(models[j]) > \
-                       self.exec_order.index(model):
-                        self.exec_order.remove(models[j])
-                        self.exec_order.insert(self.exec_order.index(model),
+                    if self._exec_order.index(models[j]) > \
+                       self._exec_order.index(model):
+                        self._exec_order.remove(models[j])
+                        self._exec_order.insert(self._exec_order.index(model),
                                                models[j])
                 except ValueError:
-                    self.exec_order.insert(self.exec_order.index(model),
+                    self._exec_order.insert(self._exec_order.index(model),
                                            models[j])
 
         var_mod = {}
@@ -978,46 +979,46 @@ class LPU(Module):
                 if not var in var_mod: var_mod[var] = []
                 var_mod[var].append(model)
 
-        self.model_var_inj = {}
+        self._model_var_inj = {}
         for var, models in var_mod.items():
             i = 0
             for model in models:
-                i = max(self.exec_order.index(model),i)
-            if not self.exec_order[i] in self.model_var_inj:
-                self.model_var_inj[self.exec_order[i]] = []
-            self.model_var_inj[self.exec_order[i]].append(var)
+                i = max(self._exec_order.index(model),i)
+            if not self._exec_order[i] in self._model_var_inj:
+                self._model_var_inj[self._exec_order[i]] = []
+            self._model_var_inj[self._exec_order[i]].append(var)
 
         #Variables not updated by any component (for example those coming from
         #external input or Ports) are slated to be injected at the end of a step
-        for var in self.variable_delay_map:
+        for var in self._variable_delay_map:
             if not var in var_mod:
-                if not self.exec_order[-1] in self.model_var_inj:
-                    self.model_var_inj[self.exec_order[-1]] = []
-                self.model_var_inj[self.exec_order[-1]].append(var)
+                if not self._exec_order[-1] in self._model_var_inj:
+                    self._model_var_inj[self._exec_order[-1]] = []
+                self._model_var_inj[self._exec_order[-1]].append(var)
 
-        if self.print_timing:
+        if self._print_timing:
             start = time.time()
         # Get selectors of input ports:
-        sel_in_gpot, self.in_gpot_uids = self.extract_in_gpot(comp_dict,
-                                                              self.uid_key)
-        self.sel_in_gpot = Selector(','.join(sel_in_gpot))
-        sel_in_spk, self.in_spk_uids = self.extract_in_spk(comp_dict,
-                                                           self.uid_key)
-        self.sel_in_spk = Selector(','.join(sel_in_spk))
-        sel_in = Selector.add(self.sel_in_gpot, self.sel_in_spk)
+        sel_in_gpot, self._in_gpot_uids = self.extract_in_gpot(comp_dict,
+                                                              self._uid_key)
+        self._sel_in_gpot = Selector(','.join(sel_in_gpot))
+        sel_in_spk, self._in_spk_uids = self.extract_in_spk(comp_dict,
+                                                           self._uid_key)
+        self._sel_in_spk = Selector(','.join(sel_in_spk))
+        sel_in = Selector.add(self._sel_in_gpot, self._sel_in_spk)
 
         # Get selectors of output neurons:
-        sel_out_gpot, self.out_gpot_uids = self.extract_out_gpot(comp_dict,
-                                                                 self.uid_key)
-        self.sel_out_gpot = Selector(','.join(sel_out_gpot))
-        sel_out_spk, self.out_spk_uids = self.extract_out_spk(comp_dict,
-                                                              self.uid_key)
-        self.sel_out_spk = Selector(','.join(sel_out_spk))
-        sel_out = Selector.add(self.sel_out_gpot, self.sel_out_spk)
-        sel_gpot = Selector.add(self.sel_in_gpot, self.sel_out_gpot)
-        sel_spk = Selector.add(self.sel_in_spk, self.sel_out_spk)
+        sel_out_gpot, self._out_gpot_uids = self.extract_out_gpot(comp_dict,
+                                                                 self._uid_key)
+        self._sel_out_gpot = Selector(','.join(sel_out_gpot))
+        sel_out_spk, self._out_spk_uids = self.extract_out_spk(comp_dict,
+                                                              self._uid_key)
+        self._sel_out_spk = Selector(','.join(sel_out_spk))
+        sel_out = Selector.add(self._sel_out_gpot, self._sel_out_spk)
+        sel_gpot = Selector.add(self._sel_in_gpot, self._sel_out_gpot)
+        sel_spk = Selector.add(self._sel_in_spk, self._sel_out_spk)
         sel = Selector.add(sel_gpot, sel_spk)
-        if self.print_timing:
+        if self._print_timing:
             self.log_info("Elapsed time for generating selectors: {:.3f} seconds".format( time.time()-start))
 
         # Save component parameters data in the form
@@ -1030,12 +1031,12 @@ class LPU(Module):
                           len(sum([d[uid_key] for d in n.values()],[]))
                           for m, n in self.comp_list]
 
-        data_gpot = np.zeros(len(self.in_gpot_uids)+len(self.out_gpot_uids),
-                             self.default_dtype)
-        data_spike = np.zeros(len(self.in_spk_uids)+len(self.out_spk_uids),
-                              self.default_dtype)
+        data_gpot = np.zeros(len(self._in_gpot_uids)+len(self._out_gpot_uids),
+                             self._default_dtype)
+        data_spike = np.zeros(len(self._in_spk_uids)+len(self._out_spk_uids),
+                              self._default_dtype)
 
-        if self.print_timing:
+        if self._print_timing:
             start = time.time()
         super(LPU, self).__init__(sel=sel, sel_in=sel_in, sel_out=sel_out,
                                   sel_gpot=sel_gpot, sel_spike=sel_spk,
@@ -1046,21 +1047,21 @@ class LPU(Module):
                                   device=device, debug=debug, time_sync=time_sync,
                                   print_timing=print_timing)
 
-        if self.print_timing:
+        if self._print_timing:
             cuda.Context.synchronize()
             self.log_info("Elapsed time for initializing parent class: {:.3f} seconds".format(time.time()-start))
 
 
         # Integer indices in port map data arrays corresponding to input/output
         # gpot/spiking ports:
-        self.in_gpot_inds = np.array(self.pm['gpot'].ports_to_inds(
-                                     self.sel_in_gpot), dtype=np.int32)
-        self.out_gpot_inds = np.array(self.pm['gpot'].ports_to_inds(
-                                      self.sel_out_gpot), dtype=np.int32)
-        self.in_spk_inds = np.array(self.pm['spike'].ports_to_inds(
-                                    self.sel_in_spk), dtype=np.int32)
-        self.out_spk_inds = np.array(self.pm['spike'].ports_to_inds(
-                                     self.sel_out_spk), dtype=np.int32)
+        self._in_gpot_inds = np.array(self.pm['gpot'].ports_to_inds(
+                                     self._sel_in_gpot), dtype=np.int32)
+        self._out_gpot_inds = np.array(self.pm['gpot'].ports_to_inds(
+                                      self._sel_out_gpot), dtype=np.int32)
+        self._in_spk_inds = np.array(self.pm['spike'].ports_to_inds(
+                                    self._sel_in_spk), dtype=np.int32)
+        self._out_spk_inds = np.array(self.pm['spike'].ports_to_inds(
+                                     self._sel_out_spk), dtype=np.int32)
 
     # def generate_uid(self, input=False):
     #     if input:
@@ -1075,27 +1076,27 @@ class LPU(Module):
     #     return uid
 
     def pre_run(self):
-        if self.print_timing:
+        if self._print_timing:
             start = time.time()
         super(LPU, self).pre_run()
-        if self.print_timing:
+        if self._print_timing:
             start = time.time()
             self.log_info("LPU pre_run parent took {} seconds".format(time.time()-start))
 
-        if self.print_timing:
+        if self._print_timing:
             start = time.time()
         self.memory_manager = MemoryManager()
         self.init_variable_memory()
-        if self.print_timing:
+        if self._print_timing:
             cuda.Context.synchronize()
             self.log_info('Elapsed time for initialing variable memory: {:.3f} seconds'.format( time.time()-start))
             start = time.time()
         self.process_connections()
-        if self.print_timing:
+        if self._print_timing:
             self.log_info('Elapsed time for process_connections: {:.3f} seconds'.format(time.time()-start))
             start = time.time()
         self.init_parameters()
-        if self.print_timing:
+        if self._print_timing:
             cuda.Context.synchronize()
             self.log_info('Elapsed time for init_paramseters: {:.3f} seconds'.format( time.time()-start))
             start = time.time()
@@ -1125,7 +1126,7 @@ class LPU(Module):
                             int(int(buff.gpudata)+(buff.current*buff.ld+\
                                                 shift)*buff.dtype.itemsize),
                             int(buff.dtype.itemsize*self.model_num[self.models[model]]))
-        if self.print_timing:
+        if self._print_timing:
             cuda.Context.synchronize()
             self.log_info('Elapsed time for instantiating components: {:.3f} seconds'.format(time.time()-start))
             start = time.time()
@@ -1133,7 +1134,7 @@ class LPU(Module):
         self._setup_input_ports()
         self._setup_output_ports()
 
-        if self.print_timing:
+        if self._print_timing:
             cuda.Context.synchronize()
             self.log_info('Elapsed time for setting up ports: {:.3f} seconds'.format( time.time()-start))
             start = time.time()
@@ -1146,70 +1147,74 @@ class LPU(Module):
             p.LPU_obj = self
             p._pre_run()
 
-        if self.print_timing:
+        if self._print_timing:
             cuda.Context.synchronize()
             self.log_info('Elapsed time for prerun input and output processors: {:.3f} seconds'.format( time.time()-start))
 
         self.memory_manager.precompile_fill_zeros()
 
         if self.control_inteface: self.control_inteface.register(self)
-        if self.print_timing:
+        if self._print_timing:
             cuda.Context.synchronize()
             self.log_info("Elapsed time for LPU pre_run: {:.3f} seconds".format(time.time()-start))
 
-        if self.print_timing:
+        if self._print_timing:
             self.timing = {'read_input': 0, 'input_processors': 0, 'inject_input': 0,
                            'model_run': 0, 'output_processors': 0,
                            'extract_output': 0, 'total': 0}
+        cuda.Context.synchronize()
+        self.log_info("Total compiling time: {:.3f} seconds".format(time.time()-self._compilation_start_time))
+        print('Compilation of executable circuit completed in {} seconds'.format(
+                time.time() - self._compilation_start_time))
 
-    # TODO: optimize the order of self.out_port_conns beforehand
+    # TODO: optimize the order of self._out_port_conns beforehand
     def _setup_output_ports(self):
-        self.out_port_inds_gpot = {}
-        self.out_var_inds_gpot = {}
-        self.out_port_inds_spk = {}
-        self.out_var_inds_spk = {}
+        self._out_port_inds_gpot = {}
+        self._out_var_inds_gpot = {}
+        self._out_port_inds_spk = {}
+        self._out_var_inds_spk = {}
         # assuming that the UIDs are unique
-        out_gpot_index = {uid: i for i, uid in enumerate(self.out_gpot_uids)}
-        out_spk_index = {uid: i for i, uid in enumerate(self.out_spk_uids)}
-        for pre_uid, post_uid, var in self.out_port_conns:
-            if not var in self.out_port_inds_gpot:
-                self.out_port_inds_gpot[var] = []
-                self.out_var_inds_gpot[var] = []
-                self.out_port_inds_spk[var] = []
-                self.out_var_inds_spk[var] = []
+        out_gpot_index = {uid: i for i, uid in enumerate(self._out_gpot_uids)}
+        out_spk_index = {uid: i for i, uid in enumerate(self._out_spk_uids)}
+        for pre_uid, post_uid, var in self._out_port_conns:
+            if not var in self._out_port_inds_gpot:
+                self._out_port_inds_gpot[var] = []
+                self._out_var_inds_gpot[var] = []
+                self._out_port_inds_spk[var] = []
+                self._out_var_inds_spk[var] = []
             ind = self.memory_manager.variables[var]['uids'][pre_uid]
             if post_uid in out_gpot_index:
-                # self.out_port_inds_gpot[var].append(self.out_gpot_inds[\
-                #                             self.out_gpot_uids.index(post_uid)])
-                self.out_port_inds_gpot[var].append(self.out_gpot_inds[\
+                # self._out_port_inds_gpot[var].append(self._out_gpot_inds[\
+                #                             self._out_gpot_uids.index(post_uid)])
+                self._out_port_inds_gpot[var].append(self._out_gpot_inds[\
                                             out_gpot_index[post_uid]])
-                self.out_var_inds_gpot[var].append(ind)
+                self._out_var_inds_gpot[var].append(ind)
             else:
-                self.out_port_inds_spk[var].append(self.out_spk_inds[\
+                self._out_port_inds_spk[var].append(self._out_spk_inds[\
                                             out_spk_index[post_uid]])
-                self.out_var_inds_spk[var].append(ind)
+                self._out_var_inds_spk[var].append(ind)
 
-        tmp = self.out_port_inds_gpot.copy()
+        tmp = self._out_port_inds_gpot.copy()
         for var in tmp:
-            if not self.out_port_inds_gpot[var]:
-                del self.out_port_inds_gpot[var]
-                del self.out_var_inds_gpot[var]
+            if not self._out_port_inds_gpot[var]:
+                del self._out_port_inds_gpot[var]
+                del self._out_var_inds_gpot[var]
             else:
-                self.out_port_inds_gpot[var] = garray.to_gpu(\
-                        np.array(self.out_port_inds_gpot[var],np.int32))
-                self.out_var_inds_gpot[var] = garray.to_gpu(\
-                        np.array(self.out_var_inds_gpot[var],np.int32))
+                self._out_port_inds_gpot[var] = garray.to_gpu(\
+                        np.array(self._out_port_inds_gpot[var],np.int32))
+                self._out_var_inds_gpot[var] = garray.to_gpu(\
+                        np.array(self._out_var_inds_gpot[var],np.int32))
 
-        tmp = self.out_port_inds_spk.copy()
+        tmp = self._out_port_inds_spk.copy()
         for var in tmp:
-            if not self.out_port_inds_spk[var]:
-                del self.out_port_inds_spk[var]
-                del self.out_var_inds_spk[var]
+            if not self._out_port_inds_spk[var]:
+                del self._out_port_inds_spk[var]
+                del self._out_var_inds_spk[var]
             else:
-                self.out_port_inds_spk[var] = garray.to_gpu(\
-                        np.array(self.out_port_inds_spk[var],np.int32))
-                self.out_var_inds_spk[var] = garray.to_gpu(\
-                        np.array(self.out_var_inds_spk[var],np.int32))
+                self._out_port_inds_spk[var] = garray.to_gpu(\
+                        np.array(self._out_port_inds_spk[var],np.int32))
+                self._out_var_inds_spk[var] = garray.to_gpu(\
+                        np.array(self._out_var_inds_spk[var],np.int32))
 
     def _setup_input_ports(self):
         self.port_inds_gpot = {}
@@ -1217,9 +1222,9 @@ class LPU(Module):
         self.port_inds_spk = {}
         self.var_inds_spk = {}
         # assuming that the UIDs are unique
-        in_gpot_index = {uid: i for i, uid in enumerate(self.in_gpot_uids)}
-        in_spk_index = {uid: i for i, uid in enumerate(self.in_spk_uids)}
-        for var, uids in self.in_port_vars.items():
+        in_gpot_index = {uid: i for i, uid in enumerate(self._in_gpot_uids)}
+        in_spk_index = {uid: i for i, uid in enumerate(self._in_spk_uids)}
+        for var, uids in self._in_port_vars.items():
             self.port_inds_gpot[var] = []
             self.var_inds_gpot[var] = []
             self.port_inds_spk[var] = []
@@ -1230,11 +1235,11 @@ class LPU(Module):
             # accessed via spiking with those accessed via gpot ports is null
             for i,uid in enumerate(uids):
                 if uid in in_gpot_index:
-                    self.port_inds_gpot[var].append(self.in_gpot_inds[\
+                    self.port_inds_gpot[var].append(self._in_gpot_inds[\
                                             in_gpot_index[uid]])
                     self.var_inds_gpot[var].append(i + shift)
                 else:
-                    self.port_inds_spk[var].append(self.in_spk_inds[\
+                    self.port_inds_spk[var].append(self._in_spk_inds[\
                                             in_spk_index[uid]])
                     self.var_inds_spk[var].append(i + shift)
         tmp = self.port_inds_gpot.copy()
@@ -1263,7 +1268,7 @@ class LPU(Module):
         for m, n in self.comp_list:
             if not m in ['Port','Input']:
                 nn = n.copy()
-                nn.pop(self.uid_key)
+                nn.pop(self._uid_key)
                 # copy integer and boolean parameters into separate dictionary
                 nn_int = {k:v for k, v in iteritems(nn) if (isinstance(v, list)
                             and len(v) and type(v[0]) in [int, bool])}
@@ -1274,7 +1279,7 @@ class LPU(Module):
                     self.memory_manager.params_htod(m, nn_int, np.int32)
                 if nn_rest:
                     self.memory_manager.params_htod(m, nn_rest,
-                                                    self.default_dtype)
+                                                    self._default_dtype)
 
     def init_variable_memory(self):
         var_info = {}
@@ -1286,34 +1291,34 @@ class LPU(Module):
                     if not var in var_info:
                         var_info[var] = {'models':[],'len':[],'delay':0,'uids':[]}
                     var_info[var]['models'].append('Input')
-                    var_info[var]['len'].append(len(d[self.uid_key]))
-                    var_info[var]['uids'].extend(d[self.uid_key])
+                    var_info[var]['len'].append(len(d[self._uid_key]))
+                    var_info[var]['uids'].extend(d[self._uid_key])
                 continue
             for var in self._comps[model]['updates']:
                 if not var in var_info:
                     var_info[var] = {'models':[],'len':[],'delay':0,'uids':[]}
                 var_info[var]['models'].append(model)
-                var_info[var]['len'].append(len(attribs[self.uid_key]))
-                var_info[var]['uids'].extend(attribs[self.uid_key])
+                var_info[var]['len'].append(len(attribs[self._uid_key]))
+                var_info[var]['uids'].extend(attribs[self._uid_key])
 
         # Add memory for input ports
-        for var in self.in_port_vars:
+        for var in self._in_port_vars:
             if not var in var_info:
                 var_info[var] = {'models':[],'len':[],'delay':0,'uids':[]}
             var_info[var]['models'].append('Port')
-            var_info[var]['len'].append(len(self.in_port_vars[var]))
-            var_info[var]['uids'].extend(self.in_port_vars[var])
+            var_info[var]['len'].append(len(self._in_port_vars[var]))
+            var_info[var]['uids'].extend(self._in_port_vars[var])
 
 
 
-        for var in self.variable_delay_map:
-            var_info[var]['delay'] = self.variable_delay_map[var]
+        for var in self._variable_delay_map:
+            var_info[var]['delay'] = self._variable_delay_map[var]
 
         for var, d in var_info.items():
             d['cumlen'] = np.cumsum([0]+d['len'])
             d['uids'] = {uid:i for i, uid in enumerate(d['uids'])}
             self.memory_manager.memory_alloc(var, d['cumlen'][-1], d['delay']+2,\
-                dtype=self.default_dtype,
+                dtype=self._default_dtype,
                 info=d)
 
     def process_connections(self):
@@ -1322,7 +1327,7 @@ class LPU(Module):
             pre = {var:[] for var in self._comps[model]['accesses']}
             npre = {var:[] for var in self._comps[model]['accesses']}
             data = {var:{} for var in self._comps[model]['accesses']}
-            for uid in attribs[self.uid_key]:
+            for uid in attribs[self._uid_key]:
                 cnt = {var:0 for var in self._comps[model]['accesses']}
                 if uid in self.conn_dict:
                     for var in self.conn_dict[uid]:
@@ -1358,7 +1363,7 @@ class LPU(Module):
         for p in self.input_processors: p.post_run()
         for p in self.output_processors: p.post_run()
         super(LPU, self).post_run()
-        if self.print_timing:
+        if self._print_timing:
             print('time spent on:', self.timing)
 
     def run_step(self):
@@ -1366,40 +1371,40 @@ class LPU(Module):
 
 
         # Update input ports
-        if self.print_timing:
+        if self._print_timing:
             start_all = time.time()
             start = time.time()
         self._read_LPU_input()
-        if self.print_timing:
+        if self._print_timing:
             cuda.Context.synchronize()
             self.timing['read_input'] += time.time()-start
 
 
         # Fetch updated input if available from all input processors
-        if self.print_timing:
+        if self._print_timing:
             start = time.time()
         for p in self.input_processors: p.run_step()
-        if self.print_timing:
+        if self._print_timing:
             cuda.Context.synchronize()
             self.timing['input_processors'] += time.time()-start
 
-        if self.print_timing:
+        if self._print_timing:
             start = time.time()
-        for model in self.exec_order:
-            if model in self.model_var_inj:
-                for var in self.model_var_inj[model]:
+        for model in self._exec_order:
+            if model in self._model_var_inj:
+                for var in self._model_var_inj[model]:
                     # Reset memory for external input to zero if present
                     self.memory_manager.fill_zeros(model='Input', variable=var)
                     for p in self.input_processors:
                         p.inject_input(var)
-        if self.print_timing:
+        if self._print_timing:
             cuda.Context.synchronize()
             self.timing['inject_input'] += time.time()-start
 
         # Call run_step of components
-        if self.print_timing:
+        if self._print_timing:
             start = time.time()
-        for model in self.exec_order:
+        for model in self._exec_order:
             # Get correct position in buffer for update
             update_pointers = {}
             for var in self._comps[model]['updates']:
@@ -1413,25 +1418,25 @@ class LPU(Module):
                                        (buffer_current_plus_one*buff.ld+\
                                         shift)*buff.dtype.itemsize
             self.components[model].run_step(update_pointers)
-        if self.print_timing:
+        if self._print_timing:
             cuda.Context.synchronize()
             self.timing['model_run'] += time.time()-start
 
         # Process output processors
-        if self.print_timing:
+        if self._print_timing:
             start = time.time()
         for p in self.output_processors: p.run_step()
-        if self.print_timing:
+        if self._print_timing:
             cuda.Context.synchronize()
             self.timing['output_processors'] += time.time()-start
 
         # Check for transforms
 
         # Update output ports
-        if self.print_timing:
+        if self._print_timing:
             start = time.time()
         self._extract_output()
-        if self.print_timing:
+        if self._print_timing:
             cuda.Context.synchronize()
             self.timing['extract_output'] += time.time()-start
 
@@ -1442,7 +1447,7 @@ class LPU(Module):
 
         # Instruct Control inteface to process any pending commands
         if self.control_inteface: self.control_inteface.process_commands()
-        if self.print_timing:
+        if self._print_timing:
             cuda.Context.synchronize()
             self.timing['total'] += time.time()-start_all
 
@@ -1476,7 +1481,7 @@ class LPU(Module):
         store them in buffers.
         """
 
-        for var in self.out_port_inds_gpot:
+        for var in self._out_port_inds_gpot:
             # Get correct position in buffer for update
             buff = self.memory_manager.get_buffer(var)
             src_mem = garray.GPUArray((1,buff.size),buff.dtype,
@@ -1484,8 +1489,8 @@ class LPU(Module):
                                        buff.current*buff.ld*\
                                       buff.dtype.itemsize)
             self.set_inds_both(src_mem, self.pm['gpot'].data, \
-                    self.out_var_inds_gpot[var], self.out_port_inds_gpot[var])
-        for var in self.out_port_inds_spk:
+                    self._out_var_inds_gpot[var], self._out_port_inds_gpot[var])
+        for var in self._out_port_inds_spk:
             # Get correct position in buffer for update
             buff = self.memory_manager.get_buffer(var)
             src_mem = garray.GPUArray((1,buff.size),buff.dtype,
@@ -1493,7 +1498,7 @@ class LPU(Module):
                                        buff.current*buff.ld*\
                                        buff.dtype.itemsize)
             self.set_inds_both(src_mem, self.pm['spike'].data, \
-                    self.out_var_inds_spk[var], self.out_port_inds_spk[var])
+                    self._out_var_inds_spk[var], self._out_port_inds_spk[var])
 
     def set_inds_both(self, src, dest, src_inds, dest_inds):
         """
@@ -1528,8 +1533,8 @@ class LPU(Module):
                           for var in self._comps[comp_name]['accesses'] \
                           if var in self.memory_manager.variables}
         return cls(params_dict, access_buffers, self.dt,
-                   LPU_id=self.LPU_id, debug=self.debug,
-                   cuda_verbose=bool(self.compile_options))
+                   LPU_id=self.LPU_id, debug=self._debug,
+                   cuda_verbose=bool(self._compile_options))
 
 
     def _load_components(self, extra_comps=[]):
