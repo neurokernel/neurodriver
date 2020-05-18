@@ -18,6 +18,30 @@ class HodgkinHuxley2(BaseAxonHillockModel):
                              ('m', 0.),
                              ('h', 0.92)]) # Membrane Potential (mV)
 
+    def pre_run(self, update_pointers):
+        if 'initV' in self.params_dict:
+            cuda.memcpy_dtod(int(update_pointers['V']),
+                             self.params_dict['initV'].gpudata,
+                             self.params_dict['initV'].nbytes)
+            cuda.memcpy_dtod(self.internal_states['internalVprev1'].gpudata,
+                             self.params_dict['initV'].gpudata,
+                             self.params_dict['initV'].nbytes)
+            cuda.memcpy_dtod(self.internal_states['internalVprev2'].gpudata,
+                             self.params_dict['initV'].gpudata,
+                             self.params_dict['initV'].nbytes)
+        if 'initn' in self.params_dict:
+            cuda.memcpy_dtod(self.internal_states['n'].gpudata,
+                             self.params_dict['initn'].gpudata,
+                             self.params_dict['initn'].nbytes)
+        if 'initm' in self.params_dict:
+            cuda.memcpy_dtod(self.internal_states['m'].gpudata,
+                             self.params_dict['initm'].gpudata,
+                             self.params_dict['initm'].nbytes)
+        if 'inith' in self.params_dict:
+            cuda.memcpy_dtod(self.internal_states['h'].gpudata,
+                             self.params_dict['inith'].gpudata,
+                             self.params_dict['inith'].nbytes)
+
     def get_update_template(self):
         template = """
 #define EXP exp%(fletter)s
