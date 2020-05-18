@@ -10,7 +10,7 @@ import numpy as np
 from neurokernel.LPU.LPU import LPU
 
 class BaseInputProcessor(object):
-    def __init__(self, var_list, mode=0):
+    def __init__(self, var_list, mode = 0, memory_mode = 'cpu'):
         # var_list should be a list of (variable, uids)
         # If no uids is provided, the variable will be ignored
         # Invalid uids will be ignored
@@ -25,6 +25,8 @@ class BaseInputProcessor(object):
         # mode = 0 => provide zero input when no input is available
         # mode = 1 => persist with previous input if no input is available
         self.mode = mode
+        self.memory_mode = memory_mode
+        assert memory_mode in ['cpu', 'gpu'], "Memory mode must be either 'cpu' or 'gpu'"
         self.input_to_be_processed = True
         self.dtypes = {}
         self._d_input = {}
@@ -39,24 +41,31 @@ class BaseInputProcessor(object):
         assert(isinstance(value, LPU))
         self._LPU_obj = value
         self.dt = self._LPU_obj.dt
+        self.sim_dt = self._LPU_obj.dt
         self.memory_manager = self._LPU_obj.memory_manager
 
     def run_step(self):
         if not self.is_input_available():
             if self.mode == 0:
                 self.input_to_be_processed = False
+                # for var in self.variables:
+                #     self._d_input[var].fill(0)
             elif self.mode == 1:
                 self.input_to_be_processed = True
+                pass
             else:
                 self.input_to_be_processed = False
+                # for var in self.variables:
+                #     self._d_input[var].fill(0)
                 self.LPU_obj.log_info("Invalid mode for Input Processor. " +\
                                       "Defaulting to mode 0(zero input)")
             return
 
         self.input_to_be_processed = True
         self.update_input()
-        for var in self.variables:
-            self._d_input[var].set(self.variables[var]['input'])
+        if self.memory_mode == 'cpu':
+            for var in self.variables:
+                self._d_input[var].set(self.variables[var]['input'])
 
     def inject_input(self, var):
         if var not in self.variables: return
@@ -81,8 +90,9 @@ class BaseInputProcessor(object):
 
     def _pre_run(self):
         assert(self.LPU_obj)
-        assert(all([var in self.memory_manager.variables
-                    for var in self.variables.keys()]))
+        assert all([var in self.memory_manager.variables
+                    for var in self.variables.keys()]),\
+               (list(self.memory_manager.variables), list(self.variables.keys()))
         self.add_inds_func = {}
         for var, d in self.variables.items():
             v_dict =  self.memory_manager.variables[var]
@@ -96,8 +106,12 @@ class BaseInputProcessor(object):
             self.dest_inds[var] = garray.to_gpu(np.array(inds,np.int32))
             self.dtypes[var] = v_dict['buffer'].dtype
             self._d_input[var] = garray.zeros(len(d['uids']),self.dtypes[var])
-            self.variables[var]['input'] = np.zeros(len(d['uids']),
-                                                    self.dtypes[var])
+            if self.memory_mode == 'cpu':
+                self.variables[var]['input'] = cuda.pagelocked_zeros(
+                                                        len(d['uids']),
+                                                        self.dtypes[var])
+            elif self.memory_mode == 'gpu':
+                self.variables[var]['input'] = self._d_input[var]
             self.add_inds_func[var] = get_inds_kernel(self.dest_inds[var].dtype,
                                                       v_dict['buffer'].dtype)
         self.pre_run()
