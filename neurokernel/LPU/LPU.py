@@ -229,7 +229,7 @@ class LPU(Module):
 
     @staticmethod
     def graph_to_dicts(graph, uid_key=None, class_key='class',
-                       remove_edge_id = False):
+                       remove_edge_id = True):
         """
         Convert graph of LPU neuron/synapse data to Python data structures.
 
@@ -348,6 +348,7 @@ class LPU(Module):
         if remove_edge_id:
             for pre, post, conn in conns:
                 conn.pop('id', None)
+                conn.pop('tag', None)
         return comp_dict, conns
 
     @staticmethod
