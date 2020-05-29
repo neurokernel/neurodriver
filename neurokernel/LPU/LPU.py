@@ -101,6 +101,9 @@ class LPU(Module):
         MPI tags that respectively identify messages containing control data,
         graded potential port values, and spiking port values transmitted to
         worker nodes. (see neurokernel.core_gpu.Module)
+    manager: bool
+        Managerless running mode flag. It False, run Module without a
+        manager. (default: True).
     rank_to_id: bidict.bidict
         Mapping between MPI ranks and module object IDs (default: None).
     routing_table: neurokernel.routing_table.RoutingTable
@@ -523,7 +526,8 @@ class LPU(Module):
 
     def __init__(self, dt, graph_type, graph_dict, device=0, input_processors=[],
                  output_processors=[], ctrl_tag=CTRL_TAG, gpot_tag=GPOT_TAG,
-                 spike_tag=SPIKE_TAG, rank_to_id=None, routing_table=None,
+                 spike_tag=SPIKE_TAG, manager = True,
+                 rank_to_id=None, routing_table=None,
                  uid_key='id', debug=False, columns=['io', 'type', 'interface'],
                  cuda_verbose=False, time_sync=False, default_dtype=np.double,
                  control_inteface=None, id=None, extra_comps=[],
@@ -1044,6 +1048,7 @@ class LPU(Module):
                                   data_gpot=data_gpot, data_spike=data_spike,
                                   columns=columns, ctrl_tag=ctrl_tag, gpot_tag=gpot_tag,
                                   spike_tag=spike_tag, id=self.LPU_id,
+                                  manager = manager,
                                   rank_to_id=rank_to_id, routing_table=routing_table,
                                   device=device, debug=debug, time_sync=time_sync,
                                   print_timing=print_timing)

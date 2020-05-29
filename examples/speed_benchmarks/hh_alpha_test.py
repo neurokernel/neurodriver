@@ -134,7 +134,7 @@ def simulation(dt, N, output_n, nsteps = 10000):
     print("Spawning LPUs Completed in {} seconds.".format(time.time()-start_time))
     start_time = time.time()
     try:
-        execution_time = man.wait(return_timing = True)
+        execution_time = man.timed_wait()
     except LPUExecutionError
         sys.exit(1)
     compile_and_execute_time = time.time()-start_time
