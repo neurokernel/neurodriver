@@ -1,4 +1,5 @@
 
+import sys
 import time
 import argparse
 import itertools
@@ -9,6 +10,7 @@ import networkx as nx
 import numpy as np
 from neurokernel.tools.logging import setup_logger
 import neurokernel.core_gpu as core
+from neurokernel.tools.misc import LPUExecutionError
 
 from neurokernel.LPU.LPU import LPU
 
@@ -119,7 +121,6 @@ def simulation(dt, N, output_n, nsteps = 10000):
     #fl_output_processor = [OutputRecorder([('spike_state', None), ('V', None), ('g', None), ('E', None)], dur, dt, sample_interval = 1)]
 
     man.add(LPU, 'ge', dt, 'pickle', pickle.dumps(G),
-            #comp_dict, conns,
             device=args.gpu_dev, input_processors=[fl_input_processor],
             output_processors=fl_output_processor, debug=args.debug,
             print_timing=False, time_sync=False,
@@ -132,7 +133,10 @@ def simulation(dt, N, output_n, nsteps = 10000):
     man.start(steps=steps)
     print("Spawning LPUs Completed in {} seconds.".format(time.time()-start_time))
     start_time = time.time()
-    execution_time = man.wait(return_timing = True)
+    try:
+        execution_time = man.wait(return_timing = True)
+    except LPUExecutionError
+        sys.exit(1)
     compile_and_execute_time = time.time()-start_time
     print("LPUs Compilation and Execution Completed in {} seconds.".format(compile_and_execute_time))
     return compile_and_execute_time, execution_time
