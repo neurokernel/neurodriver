@@ -10,6 +10,7 @@ import numbers
 import copy
 import itertools
 import functools
+import inspect, glob, os, importlib, sys
 
 from future.utils import iteritems
 from past.builtins import long
@@ -46,7 +47,8 @@ from collections import Counter
 from .utils.simpleio import *
 from .utils import parray
 
-from .NDComponents import *
+from . import NDComponents as nd
+from .NDComponents.NDComponent import NDComponent
 from .MemoryManager import MemoryManager
 
 import pdb
@@ -128,8 +130,19 @@ class LPU(Module):
     id: str
         Module identifier. If no identifier is specified, a unique
         identifier is automatically generated.
-    extra_comps: list
-                 a list of classes that will be used for component definition
+    extra_comps: NDComponent class or module or str or list
+                 Provide the definition of NDComponent models to use in simulation.
+                 NDComponent class: use the class directly
+                 module: search for all NDComponent subclasses within module.
+                         if module does not contain any NDComponent subclass
+                         and is __init__.py, then walk through the folder and
+                         its subfolders to retrieve all NDComponent classes
+                         from all modules.
+                 str: can be a path to a module or path to a directory.
+                      If the former, import all NDComponent subclasses within module.
+                      If the latter, import all NDComponent subclasses in modules
+                      in the folder and any subfolders.
+                 list: any combination of the above types.
                  (default: [])
     print_timing: boolean
                   to print out a detailed timing break out for quick profiling
@@ -314,8 +327,6 @@ class LPU(Module):
 
             comp_dict[model]['id'] = [comp[uid_key] if uid_key else uid \
                                       for uid, comp in sub_comps]
-
-            print('Number of {}: {}'.format(model, len(comp_dict[model]['id'])))
 
 #        for id, comp in comps:
 #            model = comp[class_key]
@@ -523,6 +534,111 @@ class LPU(Module):
         return ','.join(filter(None, \
                     [cls.extract_in(comp_dict), cls.extract_out(comp_dict)]))
 
+    @classmethod
+    def import_NDcomponent_from_path(cls, path):
+        cls = []
+        if not isinstance(path, str):
+            raise TypeError('path must be a str')
+
+        if os.path.isdir(path):
+            for root, dirs, files in os.walk(path):
+                if os.path.split(root)[-1].startswith('__'):
+                    continue
+                sys.path.append(root)
+                for file in files:
+                    m, ext = os.path.splitext(file)
+                    if ext == '.py' and not file.startswith('__'):
+                        try:
+                            mod = importlib.import_module(m, root)
+                            cls.extend(inspect.getmembers(
+                                        mod,
+                                        lambda x: inspect.isclass(x) and \
+                                        issubclass(x, NDComponent) and \
+                                        x.__module__ == mod.__name__))
+                        except ImportError:
+                            print('failed to import from {} {}'.format(root, m))
+                            pass
+                sys.path.pop(-1)
+        elif os.path.isfile(path):
+            p, file = os.path.split(path)
+            m, ext = os.path.splitext(file)
+            if ext == '.py' and not file.startswith('__'):
+                sys.path.append(p)
+                try:
+                    mod = importlib.import_module(m, p)
+                    cls.extend(inspect.getmembers(
+                                mod,
+                                lambda x: inspect.isclass(x) and \
+                                          issubclass(x, NDComponent) and \
+                                          x.__module__ == mod.__name__))
+                except ImportError:
+                    print('failed to import from {} {}'.format(p, m))
+                    pass
+                sys.path.pop(-1)
+        else:
+            raise FileNotFoundError('File or directory does not exist: {}'.format(path))
+        return cls
+
+    @classmethod
+    def import_NDcomponent_from_module(cls, mod):
+        if not inspect.ismodule(mod):
+            raise TypeError('mod is not a module')
+        cls = inspect.getmembers(
+                    mod,
+                    lambda x: inspect.isclass(x) and issubclass(x, NDComponent))
+        if not len(cls):
+            # If module does not contain any NDComponent subclasses,
+            # check if the module is an __init__.py
+            # if it is, then recursively import all importable NDComponent classes
+            # down the folder and subfolders
+            path, file = os.path.split(mod.__file__)
+            if file == '__init__.py':
+                base_package = mod.__package__
+                to_remove = len(path.split('/'))
+                for root, dirs, files in os.walk(path):
+                    if os.path.split(root)[-1].startswith('__'):
+                        continue
+                    subpackage = '.'.join(['']+root.split('/')[to_remove:])
+                    for file in files:
+                        m, ext = os.path.splitext(file)
+                        if ext == '.py' and not file.startswith('__'):
+                            try:
+                                mod = importlib.import_module(
+                                        '{}.{}'.format(subpackage, m),
+                                        base_package)
+                                cls.extend(inspect.getmembers(
+                                            mod,
+                                            lambda x: inspect.isclass(x) and \
+                                            issubclass(x, NDComponent) and \
+                                            x.__module__ == mod.__name__))
+                            except ImportError:
+                                print('failed to import from {} {}'.format(m, subpackage))
+                                pass
+        return cls
+
+    def import_models(self, models):
+        if inspect.isclass(models) and issubclass(models, NDComponent):
+            # When an NDComponent class is imported directly
+            self._comps[models.__name__] = {'accesses': models.accesses ,
+                                            'updates':models.updates,
+                                            'cls':models}
+        elif inspect.ismodule(models):
+            # when a module is provided
+            cls = self.import_NDcomponent_from_module(models)
+            for name, obj in cls:
+                self._comps[name] = {'accesses': obj.accesses,
+                                     'updates':obj.updates,
+                                     'cls':obj}
+        elif isinstance(models, str):
+            cls = self.import_NDcomponent_from_path(models)
+            for name, obj in cls:
+                self._comps[name] = {'accesses': obj.accesses,
+                                     'updates':obj.updates,
+                                     'cls':obj}
+        elif isinstance(models, (list, tuple)):
+            for model in models:
+                self.import_models(model)
+
 
     def __init__(self, dt, graph_type, graph_dict, device=0, input_processors=[],
                  output_processors=[], ctrl_tag=CTRL_TAG, gpot_tag=GPOT_TAG,
@@ -634,7 +750,16 @@ class LPU(Module):
         self._uid_generator = uid_generator()
 
         # Load all NDComponents:
-        self._load_components(extra_comps=extra_comps)
+        self._comps = {}
+        self.import_models(nd)
+        if extra_comps:
+            self.import_models(extra_comps)
+
+        # self._comps = {cls.__name__:{'accesses': cls.accesses ,
+        #                              'updates':cls.updates,
+        #                              'cls':cls} \
+        #                for cls in comp_classes if not cls.__name__[:4]=='Base'}
+        # self._load_components(extra_comps=extra_comps)
 
         if self._print_timing:
             start = time.time()
@@ -1052,6 +1177,14 @@ class LPU(Module):
                                   rank_to_id=rank_to_id, routing_table=routing_table,
                                   device=device, debug=debug, time_sync=time_sync,
                                   print_timing=print_timing)
+
+        for model in comp_dict:
+            if model == 'Input':
+                print('{}: Number of {}: {}'.format(self.id, model, {k: len(v[self._uid_key]) for k, v in comp_dict[model].items()}))
+                self.log_info('Number of {}: {}'.format(self.id, model, {k: len(v[self._uid_key]) for k, v in comp_dict[model].items()}))
+            else:
+                print('{}: Number of {}: {}'.format(self.id, model, len(comp_dict[model][self._uid_key])))
+                self.log_info('Number of {}: {}'.format(self.id, model, len(comp_dict[model][self._uid_key])))
 
         if self._print_timing:
             cuda.Context.synchronize()
