@@ -542,12 +542,12 @@ class LPU(Module):
 
         if os.path.isdir(path):
             for root, dirs, files in os.walk(path):
-                if os.path.split(root)[-1].startswith('__'):
+                if os.path.split(root)[-1].startswith('_'):
                     continue
                 sys.path.append(root)
                 for file in files:
                     m, ext = os.path.splitext(file)
-                    if ext == '.py' and not file.startswith('__'):
+                    if ext == '.py' and not file.startswith('_'):
                         try:
                             mod = importlib.import_module(m, root)
                             cls.extend(inspect.getmembers(
@@ -562,7 +562,7 @@ class LPU(Module):
         elif os.path.isfile(path):
             p, file = os.path.split(path)
             m, ext = os.path.splitext(file)
-            if ext == '.py' and not file.startswith('__'):
+            if ext == '.py' and not file.startswith('_'):
                 sys.path.append(p)
                 try:
                     mod = importlib.import_module(m, p)
@@ -596,12 +596,12 @@ class LPU(Module):
                 base_package = mod.__package__
                 to_remove = len(path.split('/'))
                 for root, dirs, files in os.walk(path):
-                    if os.path.split(root)[-1].startswith('__'):
+                    if os.path.split(root)[-1].startswith('_'):
                         continue
                     subpackage = '.'.join(['']+root.split('/')[to_remove:])
                     for file in files:
                         m, ext = os.path.splitext(file)
-                        if ext == '.py' and not file.startswith('__'):
+                        if ext == '.py' and not file.startswith('_'):
                             try:
                                 mod = importlib.import_module(
                                         '{}.{}'.format(subpackage, m),
@@ -1195,7 +1195,7 @@ class LPU(Module):
         for model in comp_dict:
             if model == 'Input':
                 print('{}: Number of {}: {}'.format(self.id, model, {k: len(v[self._uid_key]) for k, v in comp_dict[model].items()}))
-                self.log_info('Number of {}: {}'.format(model, {k: len(v[self._uid_key]) for k, v in comp_dict[model].items()}))
+                self.log_info('Number of {}: {}'.format(model, {k: len(v[self._uid_key]) for k, v in comp_dict[model].items()}.__repr__))
             else:
                 print('{}: Number of {}: {}'.format(self.id, model, len(comp_dict[model][self._uid_key])))
                 self.log_info('Number of {}: {}'.format(model, len(comp_dict[model][self._uid_key])))
