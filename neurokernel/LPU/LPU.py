@@ -648,10 +648,9 @@ class LPU(Module):
                  cuda_verbose=False, time_sync=False, default_dtype=np.double,
                  control_inteface=None, id=None, extra_comps=[],
                  print_timing=False):
+        compilation_start_time = time.time()
 
         LoggerMixin.__init__(self, 'LPU {}'.format(id))
-
-        self._compilation_start_time = time.time()
 
         assert('io' in columns)
         assert('type' in columns)
@@ -1216,6 +1215,8 @@ class LPU(Module):
         self._out_spk_inds = np.array(self.pm['spike'].ports_to_inds(
                                      self._sel_out_spk), dtype=np.int32)
 
+        self._compile_time = time.time()-compilation_start_time
+
     # def generate_uid(self, input=False):
     #     if input:
     #         uid = 'input_' + str(np.random.randint(100000))
@@ -1229,6 +1230,7 @@ class LPU(Module):
     #     return uid
 
     def pre_run(self):
+        pre_run_start_time = time.time()
         if self._print_timing:
             start = time.time()
         super(LPU, self).pre_run()
@@ -1310,16 +1312,18 @@ class LPU(Module):
         if self.control_inteface: self.control_inteface.register(self)
         if self._print_timing:
             cuda.Context.synchronize()
-            self.log_info("Elapsed time for LPU pre_run: {:.3f} seconds".format(time.time()-start))
+            self.log_info("Elapsed time for LPU pre_run: {:.3f} seconds".format(time.time()-pre_run_start_time))
+
+        self._compile_time += time.time()-pre_run_start_time
 
         if self._print_timing:
             self.timing = {'read_input': 0, 'input_processors': 0, 'inject_input': 0,
                            'model_run': 0, 'output_processors': 0,
                            'extract_output': 0, 'total': 0}
         cuda.Context.synchronize()
-        self.log_info("Total compiling time: {:.3f} seconds".format(time.time()-self._compilation_start_time))
+        self.log_info("Total compiling time: {:.3f} seconds".format(self._compile_time))
         print('Compilation of executable circuit completed in {} seconds'.format(
-                time.time() - self._compilation_start_time))
+                self._compile_time))
 
     # TODO: optimize the order of self._out_port_conns beforehand
     def _setup_output_ports(self):
