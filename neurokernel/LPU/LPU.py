@@ -648,9 +648,10 @@ class LPU(Module):
                  cuda_verbose=False, time_sync=False, default_dtype=np.double,
                  control_inteface=None, id=None, extra_comps=[],
                  print_timing=False):
-        self._compilation_start_time = time.time()
 
         LoggerMixin.__init__(self, 'LPU {}'.format(id))
+
+        self._compilation_start_time = time.time()
 
         assert('io' in columns)
         assert('type' in columns)
@@ -1069,6 +1070,7 @@ class LPU(Module):
 
         if self._print_timing:
             self.log_info("Elapsed time for optimizing ordering: {:.3f} seconds".format(time.time()-start))
+            start = time.time()
 
         # Try to figure out order of stepping through components
         # If a loop of dependencies is present, update order behaviour is undefined
@@ -1136,6 +1138,7 @@ class LPU(Module):
                 self._model_var_inj[self._exec_order[-1]].append(var)
 
         if self._print_timing:
+            self.log_info("Elapsed time for ordering execution: {:.3f} seconds".format(time.time()-start))
             start = time.time()
         # Get selectors of input ports:
         sel_in_gpot, self._in_gpot_uids = self.extract_in_gpot(comp_dict,
@@ -1159,6 +1162,7 @@ class LPU(Module):
         sel = Selector.add(sel_gpot, sel_spk)
         if self._print_timing:
             self.log_info("Elapsed time for generating selectors: {:.3f} seconds".format( time.time()-start))
+            start = time.time()
 
         # Save component parameters data in the form
         # [('Model0', {'attrib0': [..], 'attrib1': [..]}), ('Model1', ...)]
@@ -1176,6 +1180,7 @@ class LPU(Module):
                               self._default_dtype)
 
         if self._print_timing:
+            self.log_info("Elapsed time for misc: {:.3f} seconds".format(time.time()-start))
             start = time.time()
         super(LPU, self).__init__(sel=sel, sel_in=sel_in, sel_out=sel_out,
                                   sel_gpot=sel_gpot, sel_spike=sel_spk,
@@ -1190,10 +1195,10 @@ class LPU(Module):
         for model in comp_dict:
             if model == 'Input':
                 print('{}: Number of {}: {}'.format(self.id, model, {k: len(v[self._uid_key]) for k, v in comp_dict[model].items()}))
-                self.log_info('Number of {}: {}'.format(self.id, model, {k: len(v[self._uid_key]) for k, v in comp_dict[model].items()}))
+                self.log_info('Number of {}: {}'.format(model, {k: len(v[self._uid_key]) for k, v in comp_dict[model].items()}))
             else:
                 print('{}: Number of {}: {}'.format(self.id, model, len(comp_dict[model][self._uid_key])))
-                self.log_info('Number of {}: {}'.format(self.id, model, len(comp_dict[model][self._uid_key])))
+                self.log_info('Number of {}: {}'.format(model, len(comp_dict[model][self._uid_key])))
 
         if self._print_timing:
             cuda.Context.synchronize()
@@ -1228,21 +1233,21 @@ class LPU(Module):
             start = time.time()
         super(LPU, self).pre_run()
         if self._print_timing:
-            start = time.time()
             self.log_info("LPU pre_run parent took {} seconds".format(time.time()-start))
-
-        if self._print_timing:
             start = time.time()
+
         self.memory_manager = MemoryManager()
         self.init_variable_memory()
         if self._print_timing:
             cuda.Context.synchronize()
             self.log_info('Elapsed time for initialing variable memory: {:.3f} seconds'.format( time.time()-start))
             start = time.time()
+
         self.process_connections()
         if self._print_timing:
             self.log_info('Elapsed time for process_connections: {:.3f} seconds'.format(time.time()-start))
             start = time.time()
+
         self.init_parameters()
         if self._print_timing:
             cuda.Context.synchronize()
@@ -1298,6 +1303,7 @@ class LPU(Module):
         if self._print_timing:
             cuda.Context.synchronize()
             self.log_info('Elapsed time for prerun input and output processors: {:.3f} seconds'.format( time.time()-start))
+            start = time.time()
 
         self.memory_manager.precompile_fill_zeros()
 
