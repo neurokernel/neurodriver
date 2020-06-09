@@ -32,6 +32,16 @@ class BaseInputProcessor(object):
         self._d_input = {}
         self.dest_inds = {}
 
+    def add_variables(self, var_list):
+        for var, uids in var_list:
+            if uids:
+                if var in self.variables:
+                    self.variables[var]['uids'].append(uids)
+                else:
+                    self.variables[var] = {'uids':uids,'input':None}
+        self.variables.update({var:{'uids':uids,'input':None}
+                                for var, uids in var_list if uids})
+
     @property
     def LPU_obj(self):
         return self._LPU_obj

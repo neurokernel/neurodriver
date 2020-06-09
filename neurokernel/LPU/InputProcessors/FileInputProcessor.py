@@ -4,9 +4,10 @@ import numpy as np
 import pycuda.driver as cuda
 import pycuda.gpuarray as garray
 from .BaseInputProcessor import BaseInputProcessor
+from .ArrayInputProcessor import ArrayInputProcessor
 
 
-class FileInputProcessor(BaseInputProcessor):
+class FileInputProcessor(ArrayInputProcessor):
     """
     Parameters
     ----------
@@ -48,25 +49,188 @@ class FileInputProcessor(BaseInputProcessor):
         '/I/data': numpy array of dtype np.float32/np.double,
                    contains the value of inputs injected to the nodes.
     """
-    def __init__(self, filename, mode = 0, cache_length = 1000):
+    def __init__(self, filename, file_mode = 'r', mode = 0, cache_length = 1000):
         self.filename = filename
         self.cache_length = cache_length
-        h5file = h5py.File(self.filename, 'r')
-        var_list = []
-        for var, g in h5file.items():
-            if not isinstance(g, h5py.Group):
-                continue
-            uids = [a.decode('utf8') for a in g.get('uids')[()].tolist()]
-            var_list.append((var, uids))
-        super(FileInputProcessor, self).__init__(var_list, mode, memory_mode = 'gpu')
-        h5file.close()
+        inputs = {}
+        self.file_mode = file_mode
+        with h5py.File(self.filename, self.file_mode) as h5file:
+            var_list = []
+            for var, g in h5file.items():
+                if not isinstance(g, h5py.Group):
+                    continue
+                uids = [a.decode('utf8') for a in g.get('uids')[()].tolist()]
+                if var == 'spike_state' and isinstance(g.get('data'), dict):
+                    inputs[var] = {'uids': uids, 'data': {'time': [], 'index': []}}
+                else:
+                    inputs[var] = {'uids': uids, 'data': []}
+
+        super(FileInputProcessor, self).__init__(inputs = inputs, mode = mode,
+                                                 cache_length = cache_length)
+
+    def add_input(self, var, uids, data):
+        """
+        Add inputs to the input processor
+
+        Parameters
+        ----------
+        var: str
+             the variable to which input will be injected to the components
+        uids: list
+              the uids of components to inject to
+        data: ndarray or dict
+              If `variable` is 'spike_state', then data can be in spike event
+              format, as a dictionary {'time': np.ndarray, 'index', np.ndarray},\
+              specifying the time and index of spikes.
+              For all variables, data can be in stepwise input format,
+              as a ndarray of shape (T, N)
+              that specifies the input to each of the N components
+              at every time step for a total of T steps.
+              It is expected that if 'spike_state' input is added more than once,
+              they must all be of one form, either in spike event format,
+              or in stepwise input format.
+        """
+        if self.file_mode == 'r':
+            if var not in self.variables:
+                if var == 'spike_state':
+                    if isinstance(data, dict):
+                        self.spike_state_format = 'event'
+                    else:
+                        self.spike_state_format = 'stepwise'
+            else:
+                raise TypeError('Multiple {} defined in file'.format(var))
+        else:
+            with h5py.File(self.filename, 'r+') as h5file:
+                if var in h5file:
+                    uid_length = h5file[var]['uids'].shape[0]
+                    new_uids = np.concatenate((h5file[var]['uids'][:],
+                                               np.array(uids, dtype = 'S')))
+                    del h5file[var]['uids']
+                    h5file.create_dataset('{}/uids'.format(var),
+                                          new_uids)
+                    if var == 'spike_state' and isinstance(data, dict):
+                        assert self.spike_state_format == 'event', \
+                               'Spike state format was previously set to stepwise in the file, must use the same format.'
+                        spike_time = np.concatenate((h5file[var]['data']['time'][:],
+                                                     data['time']))
+                        index = np.concatenate((h5file[var]['data']['index'][:],
+                                                data['index'] + uid_length))
+                        sort_order = np.argsort(spike_time)
+                        del h5file[var]['data']
+                        h5file.create_dataset('{}/data/index'.format(var),
+                                              maxshape = (None,),
+                                              dtype = np.int32,
+                                              data = index[sort_order])
+                        h5file.create_dataset('{}/data/time'.format(var),
+                                              maxshape = (None,),
+                                              dtype = np.float64,
+                                              data = spike_time[sort_order])
+                    else:
+                        if var == 'spike_state':
+                            assert self.spike_state_format == 'stepwise', \
+                                   'Spike state format was previously set to event in the file, must use the same format.'
+                        new_data = np.hstack((h5file[var]['data'][:], data))
+                        del h5file[var]['data']
+                        h5file.create_dataset('{}/data'.format(var),
+                                              maxshape = (None, uid_length),
+                                              dtype = np.float64,
+                                              data = new_data)
+                else:
+                    uid_length = len(uids)
+                    h5file.create_dataset('{}/uids'.format(var),
+                                          maxshape = (None,),
+                                          data = np.array(uids, dtype = 'S'))
+                    if var == 'spike_state' and isinstance(data, dict):
+                        self.spike_state_format = 'event'
+                        h5file.create_dataset('{}/data/index'.format(var),
+                                              maxshape = (None,),
+                                              dtype = np.int32,
+                                              data = data['index'])
+                        h5file.create_dataset('{}/data/time'.format(var),
+                                              maxshape = (None,),
+                                              dtype = np.float64,
+                                              data = data['time'])
+                    else:
+                        if var == 'spike_state':
+                            self.spike_state_format = 'stepwise'
+                        h5file.create_dataset('{}/data'.format(var),
+                                              dtype = np.float64,
+                                              maxshape = (None, uid_length),
+                                              data = data)
+        self.add_variables([(var, uids)])
+
+    def append_input(self, var, data):
+        if self.file_mode == 'r':
+            raise FileIOError('File mode is set to "r", cannot write to input.')
+        else:
+            if var not in self.variables:
+                raise KeyError('{} not in file, cannot append to. Use add_input instead.'.format(var))
+            else:
+                with h5py.File(self.filename, 'r+') as h5file:
+                    uid_length = h5file[var]['uids'].shape[0]
+                    if var == 'spike_state' and isinstance(data, dict):
+                        assert self.spike_state_format == 'event', \
+                               'Spike state format was previously set to stepwise in the file, must use the same format.'
+                        assert data['time'][0] >= h5file[var]['data']['time'][-1], \
+                               'Appended spike time must come after the spike time in spike.'
+                        assert data['index'].max() < uid_length,\
+                               'Spike index mismatch with uids.'
+                        assert data['index'].dtype == np.int32, \
+                               'index must be np.int32 type'
+                        maxshape = h5file[var]['data']['time'].maxshape
+                        if maxshape[0] is None:
+                            h5file[var]['data']['time'].resize(
+                                (h5file[var]['data']['time'].shape[0] + data['time'].shape[0]))
+                            h5file[var]['data']['time'][-data['time'].shape[0]:] = data['time']
+                        else:
+                            spike_time = np.concatenate((h5file[var]['data']['time'][:],
+                                                         data['time']))
+                            del h5file[var]['data']['time']
+                            h5file.create_dataset('{}/data/time'.format(var),
+                                                  maxshape = (None,),
+                                                  dtype = np.float64,
+                                                  data = spike_time)
+                        maxshape = h5file[var]['data']['time'].maxshape
+                        if maxshape[0] is None:
+                            h5file[var]['data']['index'].resize(
+                                (h5file[var]['data']['index'].shape[0] + data['index'].shape[0]))
+                            h5file[var]['data']['index'][-data['index'].shape[0]:] = data['index']
+                        else:
+                            index = np.concatenate((h5file[var]['data']['index'][:],
+                                                    data['index']))
+                            del h5file[var]['data']['index']
+                            h5file.create_dataset('{}/data/index'.format(var),
+                                                  maxshape = (None,),
+                                                  dtype = np.int32,
+                                                  data = index)
+                    else:
+                        if var == 'spike_state':
+                            assert self.spike_state_format == 'stepwise', \
+                                   'Spike state format was previously set to event in the file, must use the same format.'
+                        assert data.shape[1] == uid_length, \
+                               'Data dimension mismatch with uids.'
+                        assert data.dtype == np.double, 'data must be of np.double'
+                        maxshape = h5file[var]['data'].maxshape
+                        if maxshape[0] is None:
+                            h5file[var]['data'].resize(
+                                (h5file[var]['data'].shape[0] + data.shape[0],
+                                 uid_length))
+                            h5file[var]['data'][-data.shape[0]:,:] = data
+                        else:
+                            new_data = np.vstack((h5file[var]['data'][:],
+                                                  data))
+                            del h5file[var]['data']
+                            h5file.create_dataset('{}/data'.format(var),
+                                                  dtype = np.float64,
+                                                  maxshape = (None, uid_length),
+                                                  data = new_data)
 
     def pre_run(self):
         self.h5file = h5py.File(self.filename, 'r')
         self.dsets = {}
         self.cache = {}
         self.counts = {}
-        self.end_of_var_in_file = {}
+        self.end_of_var_in_array = {}
         self.block_total = {}
         self.end_of_var = {}
         self.last_read_index = {}
@@ -78,10 +242,10 @@ class FileInputProcessor(BaseInputProcessor):
                 if 'index' in g.get('data'):
                     self.dsets[var] = {'index': g.get('data/index'),
                                        'time': g.get('data/time')}
-                    self.spike_state_format = 'compact'
+                    self.spike_state_format = 'event'
                 else:
                     self.dsets[var] = g.get('data')
-                    self.spike_state_format = 'full'
+                    self.spike_state_format = 'stepwise'
                 self.cache[var] = garray.empty((self.cache_length, len(g['uids'])),
                                                self.variables[var]['input'].dtype)
             else:
@@ -91,97 +255,13 @@ class FileInputProcessor(BaseInputProcessor):
             self.last_read_index[var] = 0
             self.counts[var] = 0
             self.end_of_var[var] = False
-            self.end_of_var_in_file[var] = False
-        # self.end_of_file = False
+            self.end_of_var_in_array[var] = False
 
     def update_input(self):
-        for var, dset in self.dsets.items():
-            if self.counts[var] == self.block_total[var]:
-                if not self.end_of_var_in_file[var]:
-                    self.read_to_cache(var)
-
-            if not self.end_of_var[var]:
-                cuda.memcpy_dtod(self.variables[var]['input'].gpudata,
-                                 int(self.cache[var].gpudata) + \
-                                 self.cache[var].shape[1]*self.counts[var]*self.cache[var].dtype.itemsize,
-                                 self.variables[var]['input'].nbytes)
-                self.counts[var] += 1
-            else:
-                if not self.end_of_file:
-                    self.variables[var]['input'].fill(0)
-
-            if self.counts[var] == self.block_total[var]:
-                if self.end_of_var_in_file[var]:
-                    self.end_of_var[var] = True
-        if self.end_of_file:
+        super(FileInputProcessor, self).update_input()
+        if self.end_of_input:
             self.h5file.close()
 
-    def read_to_cache(self, var):
-        if self.end_of_var_in_file[var]:
-            # self.cache[var].fill(0)
-            self.counts[var] = 0
-            self.block_total[var] = self.cache_length
-            return
-
-        if var == 'spike_state':
-            if self.spike_state_format == 'compact':
-                self.read_spike_times(var)
-            else:
-                self.read_block_input(var)
-        else:
-            self.read_block_input(var)
-        self.counts[var] = 0
-
-    def read_block_input(self, var):
-        tmp = self.dsets[var][self.last_read_index[var]:self.last_read_index[var]+self.cache_length,:]
-        self.last_read_index[var] += tmp.shape[0]
-        if self.last_read_index[var] == self.dsets[var].shape[0]:
-            self.end_of_var_in_file[var] = True
-        self.block_total[var] = tmp.shape[0]
-        if tmp.shape[0] < self.cache_length:
-            tmp1 = np.zeros(self.cache[var].shape, self.cache[var].dtype)
-            tmp1[:tmp.shape[0]] = tmp
-            tmp = tmp1
-        self.cache[var].set(tmp)
-
-    def read_spike_times(self, var):
-        current_time = self._LPU_obj.time
-        next_time = current_time + self.cache_length*self.sim_dt
-        spike_times = []
-        spike_index = []
-        i = 0
-        while True:
-            tmp = self.dsets[var]['time'][self.last_read_index[var]:self.last_read_index[var]+10000]
-            if tmp[0] >= next_time:
-                break
-            last_spike = tmp.shape[0] - np.argmax(tmp[::-1] < next_time)
-            index = self.dsets[var]['index'][self.last_read_index[var]:self.last_read_index[var]+last_spike]
-            spike_times.append(tmp[:last_spike])
-            spike_index.append(index[:last_spike])
-            self.last_read_index[var] += last_spike
-            if self.last_read_index[var] == self.dsets[var]['time'].shape[0]:
-                self.end_of_var_in_file[var] = True
-                break
-            if last_spike < tmp.shape[0]:
-                break
-        if len(spike_times):
-            spike_times = np.concatenate(spike_times) - current_time
-            spike_time_ids = np.floor(spike_times/self.sim_dt).astype(np.int32)
-            spike_index = np.concatenate(spike_index)
-            tmp = np.zeros(self.cache[var].shape, self.cache[var].dtype)
-            self.block_total[var] = tmp.shape[0]
-            np.add.at(tmp, (spike_time_ids, spike_index), 1)
-            self.cache[var].set(tmp)
-        else:
-            self.cache[var].fill(0)
-
-    @property
-    def end_of_file(self):
-        return all(self.end_of_var.values())
-
-    def is_input_available(self):
-        return not self.end_of_file
-
     def post_run(self):
-        if not self.end_of_file:
+        if not self.end_of_input:
             self.h5file.close()
