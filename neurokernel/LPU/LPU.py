@@ -668,6 +668,9 @@ class LPU(Module):
         else:
             self._compile_options = []
 
+        if self._print_timing:
+            start = time.time()
+
         if isinstance(graph_type, dict):
         # for backward compatibility where the two arguments are comp_dict and conn_list
             comp_dict = graph_type
@@ -737,6 +740,10 @@ class LPU(Module):
         else:
             raise TypeError('Unkown method to generate Graph')
 
+        if self._print_timing:
+            self.log_info("Elapsed time for converting graph: {:.3f} seconds".format(time.time()-start))
+            start = time.time()
+
         if not isinstance(input_processors, list):
             input_processors = [input_processors]
         if not isinstance(output_processors, list):
@@ -755,14 +762,16 @@ class LPU(Module):
         if extra_comps:
             self.import_models(extra_comps)
 
+        if self._print_timing:
+            self.log_info("Elapsed time for importing component definitions: {:.3f} seconds".format(time.time()-start))
+            start = time.time()
+
         # self._comps = {cls.__name__:{'accesses': cls.accesses ,
         #                              'updates':cls.updates,
         #                              'cls':cls} \
         #                for cls in comp_classes if not cls.__name__[:4]=='Base'}
         # self._load_components(extra_comps=extra_comps)
 
-        if self._print_timing:
-            start = time.time()
         # Ignore models without implementation
         models_to_be_deleted = []
         for model in comp_dict:
