@@ -34,13 +34,13 @@ class BaseInputProcessor(object):
 
     def add_variables(self, var_list):
         for var, uids in var_list:
-            if uids:
+            if len(uids):
                 if var in self.variables:
                     self.variables[var]['uids'].append(uids)
                 else:
                     self.variables[var] = {'uids':uids,'input':None}
         self.variables.update({var:{'uids':uids,'input':None}
-                                for var, uids in var_list if uids})
+                                for var, uids in var_list if len(uids)})
 
     @property
     def LPU_obj(self):
