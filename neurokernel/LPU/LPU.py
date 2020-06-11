@@ -747,7 +747,7 @@ class LPU(Module):
         if not isinstance(input_processors, list):
             input_processors = [input_processors]
         if not isinstance(output_processors, list):
-            input_processors = [output_processors]
+            output_processors = [output_processors]
 
         self.output_processors = output_processors
         self.input_processors = input_processors
