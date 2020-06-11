@@ -542,7 +542,7 @@ class LPU(Module):
 
         if os.path.isdir(path):
             for root, dirs, files in os.walk(path):
-                if os.path.split(root)[-1].startswith('_'):
+                if os.path.split(root)[-1][0] in ['_','.']:
                     continue
                 sys.path.append(root)
                 for file in files:
@@ -596,7 +596,7 @@ class LPU(Module):
                 base_package = mod.__package__
                 to_remove = len(path.split('/'))
                 for root, dirs, files in os.walk(path):
-                    if os.path.split(root)[-1].startswith('_'):
+                    if os.path.split(root)[-1][0] in ['_', '.']:
                         continue
                     subpackage = '.'.join(['']+root.split('/')[to_remove:])
                     for file in files:
