@@ -247,6 +247,118 @@ class ArrayInputProcessor(BaseInputProcessor):
     def is_input_available(self):
         return not self.end_of_input
 
+    def get_input(self, var = None, uids = None):
+        """
+        retrieve inputs by variable name `var` and uids
+
+        Parameters
+        ----------
+        var: str
+             Name of the variable to retrieve.
+             If None, all variables associated with a uid will be retrieved.
+        uids: str or list of str
+              uids of the component to retrieve
+              If not specified (None), all uids associated with the `var`
+              will be retrieved.
+
+        Returns
+        -------
+        input: dict or OrderedDict
+                If uids is a list or tuple, returns a OrderedDict, Otherwise a dict,
+                with inputs keyed by uid, and values are either the data/spike_times
+                of the component, or a dict keyed by variable name and data/spike_times
+                in the value.
+        """
+        if var is None and uids is None:
+            return self.data
+        elif var is not None and uids is None:
+            return self._get_input_by_var(var)
+        elif var is None and uids is not None:
+            return self._get_input_by_uids(uids)
+        else:
+            return self._get_input_by_var_and_uids(var, uids)
+
+    def _get_input_by_var(self, var):
+        uids = self.data[var]['uids']
+        data = self.data[var]['data']
+        if var == 'spike_state' and self.spike_state_format == 'event':
+            input = {uid: data['time'][data['index']==i] for i, uid in enumerate(uids)}
+        else:
+            input = {uid: data[:,i].copy() for i, uid in enumerate(uids)}
+        return input
+
+    def _get_input_by_uid(self, uid):
+        input = {}
+        for var in self.data:
+            try:
+                index = self.data[var]['uids'].index(uid)
+            except ValueError:
+                pass
+            else:
+                if var == 'spike_state' and self.spike_state_format == 'event':
+                    input[var] = self.data[var]['data']['time'][self.data[var]['data']['index'] == index]
+                else:
+                    input[var] = self.data[var]['data'][:,index].copy()
+        return input
+
+    def _get_input_by_uids(self, uids):
+        if isinstance(uids, str):
+            return {uids: self._get_input_by_uid(uids)}
+        elif isinstance(uids, (list, tuple)):
+            return OrderedDict([(uid, self._get_input_by_uid(uid)) for uid in uids])
+        elif isinstance(uids, set):
+            return {uid: self._get_input_by_uid(uid) for uid in uids}
+
+    def _get_input_by_var_and_uid(self, var, uid):
+        input = None
+        try:
+            index = self.data[var]['uids'].index(uid)
+        except ValueError:
+            pass
+        else:
+            if var == 'spike_state' and self.spike_state_format == 'event':
+                input = self.data[var]['data']['time'][self.data[var]['data']['index'] == index]
+            else:
+                input = self.data[var]['data'][:,index].copy()
+        return input
+
+    def _get_input_by_var_and_uids(self, var, uids):
+        if isinstance(uids, str):
+            return {uids: self._get_input_by_var_and_uid(var, uids)}
+        elif isinstance(uids, (list, tuple)):
+            return OrderedDict([(uid, self._get_input_by_var_and_uid(var, uid)) for uid in uids])
+        elif isinstance(uids, set):
+            return {uid: self._get_input_by_var_and_uid(var, uid) for uid in uids}
+
+    def to_file(self, filename):
+        """
+        Store inputs to file with name `filename`,
+        compatible to be used by `FileInputProcessor`
+
+        parameters
+        ----------
+        filename: str
+                  name of the file to store the results
+        """
+        with h5py.File(filename, 'w') as h5file:
+            for var, d in self.variables.items():
+                if var == 'spike_state' and self.spike_state_format == 'event':
+                    h5file.create_dataset(var + '/data/index',
+                                          dtype = np.int32,
+                                          maxshape = (None,),
+                                          data = self.data[var]['data']['index'])
+                    h5file.create_dataset(var + '/data/time',
+                                          dtype = np.double,
+                                          maxshape = (None,),
+                                          data = self.data[var]['data']['time'])
+                else:
+                    h5file.create_dataset(var + '/data',
+                                          dtype = self.data[var]['data'].dtype,
+                                          maxshape=(None, len(d['uids'])),
+                                          data = self.data[var]['data'])
+                h5file.create_dataset(var + '/uids',
+                                      data = np.array(d['uids'], dtype = 'S'))
+
 if __name__ == '__main__':
     import networkx as nx
     from neurokernel.LPU.LPU import LPU
@@ -296,4 +408,3 @@ if __name__ == '__main__':
         print('Test Passed')
     else:
         print('Test Failed')
-        
