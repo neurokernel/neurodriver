@@ -50,10 +50,6 @@ def test_NDComponent(comp, dt, **kwargs):
     steps: int
            number of time steps to simulate.
            If not specified, infer from other arguments.
-    filename: str
-              If specified, store model outputs using FileOutputProcessor
-              to the file with filename.
-              If not specified, output will be returned as a OutputRecorder object.
     device: int
             The device ID of the GPU to run stimulation (default: 0).
     print_timing: bool
@@ -216,11 +212,7 @@ def test_NDComponent(comp, dt, **kwargs):
                 steps = length
                 dur = steps*dt
 
-    filename = kwargs.get('filename', None)
-    if filename is not None:
-        output_processor = FileOutputProcessor([(var, [uid]) for var in updates], filename)
-    else:
-        output_processor = OutputRecorder([(var, [uid]) for var in updates], dur, dt)
+    output_processor = OutputRecorder([(var, [uid]) for var in updates])
 
     print('Testing component {} for duration {} at dt = {} and a total number of {} steps...'.format(
                             comp_name, dur, dt, steps))
@@ -236,7 +228,4 @@ def test_NDComponent(comp, dt, **kwargs):
 
     lpu.run(steps = steps)
 
-    if filename is None:
-        return output_processor
-    else:
-        return filename
+    return output_processor.get_output(uids = uid)[uid]
