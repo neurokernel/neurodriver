@@ -10,7 +10,6 @@ class LeakyIAFwithRefractoryPeriod(BaseAxonHillockModel):
               'threshold', # Firing Threshold (mV)
               'reset_potential', # Potential to be reset to after a spike (mV)
               'capacitance', # (\mu F/cm^2)
-              'resistance', # (k\Omega cm.^2)
               'refractory_period', # (ms)
               'time_constant', # (ms)
               'bias_current' # (\mu A/cm^2)
@@ -75,7 +74,7 @@ __global__ void update(int num_comps, %(dt)s dt, int nsteps,
         {
             V = V*bh + ((refractory_time_left == 0 ? time_constant/capacitance*(I+bias_current) : 0) + resting_potential) * (1.0 - bh);
 
-            
+
             if (V >= threshold)
             {
                 V = reset_potential;

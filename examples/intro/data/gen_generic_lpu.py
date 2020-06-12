@@ -103,9 +103,9 @@ def create_lpu_graph(lpu_name, N_sensory, N_local, N_proj):
                     G.add_node('synapse_' + 'in_port' + str(in_port_idx) + '_to_' + id,
                                **{'class': 'AlphaSynapse',
                                   'name': 'in_port' + str(in_port_idx) + '-' + name,
-                                  'ad': 0.19 * 1000,
-                                  'ar': 1.1 * 100,
-                                  'gmax': 0.003 * 1e-3,
+                                  'ad': 0.19,
+                                  'ar': 0.11,
+                                  'gmax': 0.003,
                                   'reverse': 65.0,
                                   'circuit': 'local'
                                   })
@@ -188,16 +188,16 @@ def create_lpu_graph(lpu_name, N_sensory, N_local, N_proj):
             # all other connections use the power_gpot_gpot model:
             pre_id = neu_type[i] + "_" + str(src)
             post_id = neu_type[j] + "_" + str(tar)
-            name = G.node[pre_id]['name'] + '-' + G.node[post_id]['name']
+            name = G.nodes[pre_id]['name'] + '-' + G.nodes[post_id]['name']
             synapse_id = 'synapse_' + name
-            if G.node[pre_id]['class'] is 'LeakyIAF':
+            if G.nodes[pre_id]['class'] is 'LeakyIAF':
                 G.add_node(synapse_id,
                            **{'class': 'AlphaSynapse',
                               'name': name,
-                              'ar': 1.1 * 1e2,
-                              'ad': 1.9 * 1e3,
-                              'reverse': 65.0 if G.node[post_id]['class'] is 'LeakyIAF' else 10.0,
-                              'gmax': 3 * 1e-6 if G.node[post_id]['class'] is 'LeakyIAF' else 3.1e-7,
+                              'ar': 0.11,
+                              'ad': 1.9,
+                              'reverse': 65.0 if G.nodes[post_id]['class'] is 'LeakyIAF' else 10.0,
+                              'gmax': 3 * 1e-3 if G.nodes[post_id]['class'] is 'LeakyIAF' else 3.1e-4,
                               'circuit': 'local'})
                 G.add_edge(pre_id, synapse_id)
                 G.add_edge(synapse_id, post_id)

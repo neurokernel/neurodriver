@@ -11,6 +11,7 @@ import pycuda.driver as cuda
 from pytools import memoize
 
 from . import parray_utils as pu
+from past.builtins import long
 
 """ utilities"""
 @memoize

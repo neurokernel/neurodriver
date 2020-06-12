@@ -72,7 +72,7 @@ __global__ void update(int num_comps,
     %(capacitance)s capacitance;
     %(resistance)s resistance;
     %(dt)s bh;
-    
+
     // no need to change this for loop
     for(int i = tid; i < num_comps; i += total_threads)
     {
@@ -88,14 +88,14 @@ __global__ void update(int num_comps,
 
         // update according to equations of the model
         bh = exp%(fletter)s(-ddt/(capacitance*resistance));
-        
+
         for (int j = 0; j < nsteps; ++j)
         {
             V = V*bh + (resistance*I+resting_potential)*(1.0 - bh);
             if (V >= threshold)
             {
                 V = reset_potential;
-                spike = 1;
+                spike = 1.0;
             }
         }
 
@@ -159,7 +159,7 @@ if __name__ == '__main__':
                'name': 'LeakyIAF',
                'resting_potential': -70.0,
                'reset_potential': -70.0,
-               'threshold': -45.0,
+               'threshold': -45.0, #
                'capacitance': 2.0, # in mS
                'resistance': 10.0, # in Ohm
                })

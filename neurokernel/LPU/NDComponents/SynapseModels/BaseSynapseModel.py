@@ -28,12 +28,12 @@ class BaseSynapseModel(with_metaclass(ABCMeta, NDComponent)):
             self.compile_options = []
 
         self.debug = debug
-        self.dt = dt
         self.num_comps = params_dict[self.params[0]].size
         self.dtype = params_dict[self.params[0]].dtype
         self.LPU_id = LPU_id
-        self.nsteps = 1
-        self.ddt = dt/self.nsteps
+        self.dt = np.double(dt)
+        self.ddt = np.double(1e-6)
+        self.steps = np.int32(max( int(self.dt/self.ddt), 1 ))
 
         self.params_dict = params_dict
         self.access_buffers = access_buffers
@@ -56,7 +56,7 @@ class BaseSynapseModel(with_metaclass(ABCMeta, NDComponent)):
         dtypes.update({k: self.inputs[k].dtype for k in self.accesses})
         dtypes.update({k: self.params_dict[k].dtype for k in self.params})
         dtypes.update({k: self.internal_states[k].dtype for k in self.internals})
-        dtypes.update({k: self.dtype if not k == 'spike_state' else np.int32 for k in self.updates})
+        dtypes.update({k: self.dtype for k in self.updates})
         self.update_func = self.get_update_func(dtypes)
 
     def retrieve_buffer(self, param, st = None):
@@ -120,7 +120,7 @@ __global__ void retrieve(%(type)s* buffer, int buffer_ld, int current,
 
         self.update_func.prepared_async_call(
             self.update_func.grid, self.update_func.block, st,
-            self.num_comps, self.ddt, self.nsteps,
+            self.num_comps, self.ddt, self.steps,
             *[self.inputs[k].gpudata for k in self.accesses]+\
             [self.params_dict[k].gpudata for k in self.params]+\
             [self.internal_states[k].gpudata for k in self.internals]+\

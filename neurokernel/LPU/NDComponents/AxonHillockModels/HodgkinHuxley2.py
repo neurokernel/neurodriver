@@ -1,36 +1,69 @@
 from neurokernel.LPU.NDComponents.AxonHillockModels.BaseAxonHillockModel import *
 
-class HodgkinHuxley(BaseAxonHillockModel):
+class HodgkinHuxley2(BaseAxonHillockModel):
     updates = ['spike_state', # (bool)
                'V' # Membrane Potential (mV)
               ]
     accesses = ['I'] # Current (\mu A/cm^2)
-    params = ['n', # state variable for activation of K channel ([0-1] unitless)
-              'm', # state variable for activation of Na channel ([0-1] unitless)
-              'h'  # state variable for inactivation of Na channel ([0-1] unitless)
+    params = ['g_K',
+              'g_Na',
+              'g_L',
+              'E_K',
+              'E_Na',
+              'E_L'
               ]
-    internals = OrderedDict([('internalV',-65.),       # Membrane Potential (mV)
-                             ('internalVprev1',-65.),  # Membrane Potential (mV)
-                             ('internalVprev2',-65.)]) # Membrane Potential (mV)
+    internals = OrderedDict([('internalVprev1',-65.),  # Membrane Potential (mV)
+                             ('internalVprev2',-65.),
+                             ('n', 0.),
+                             ('m', 0.),
+                             ('h', 0.92)]) # Membrane Potential (mV)
+
+    def pre_run(self, update_pointers):
+        if 'initV' in self.params_dict:
+            cuda.memcpy_dtod(int(update_pointers['V']),
+                             self.params_dict['initV'].gpudata,
+                             self.params_dict['initV'].nbytes)
+            cuda.memcpy_dtod(self.internal_states['internalVprev1'].gpudata,
+                             self.params_dict['initV'].gpudata,
+                             self.params_dict['initV'].nbytes)
+            cuda.memcpy_dtod(self.internal_states['internalVprev2'].gpudata,
+                             self.params_dict['initV'].gpudata,
+                             self.params_dict['initV'].nbytes)
+        if 'initn' in self.params_dict:
+            cuda.memcpy_dtod(self.internal_states['n'].gpudata,
+                             self.params_dict['initn'].gpudata,
+                             self.params_dict['initn'].nbytes)
+        if 'initm' in self.params_dict:
+            cuda.memcpy_dtod(self.internal_states['m'].gpudata,
+                             self.params_dict['initm'].gpudata,
+                             self.params_dict['initm'].nbytes)
+        if 'inith' in self.params_dict:
+            cuda.memcpy_dtod(self.internal_states['h'].gpudata,
+                             self.params_dict['inith'].gpudata,
+                             self.params_dict['inith'].nbytes)
 
     def get_update_template(self):
         template = """
 #define EXP exp%(fletter)s
 #define POW pow%(fletter)s
 #define ABS fabs%(fletter)s
-#define MIN fmin%(fletter)s
 
 __global__ void update(
     int num_comps,
     %(dt)s dt,
     int nsteps,
     %(I)s* g_I,
+    %(g_K)s* g_g_K,
+    %(g_Na)s* g_g_Na,
+    %(g_L)s* g_g_L,
+    %(E_K)s* g_E_K,
+    %(E_Na)s* g_E_Na,
+    %(E_L)s* g_E_L,
+    %(internalVprev1)s* g_internalVprev1,
+    %(internalVprev2)s* g_internalVprev2,
     %(n)s* g_n,
     %(m)s* g_m,
     %(h)s* g_h,
-    %(internalV)s* g_internalV,
-    %(internalVprev1)s* g_internalVprev1,
-    %(internalVprev2)s* g_internalVprev2,
     %(spike_state)s* g_spike_state,
     %(V)s* g_V)
 {
@@ -42,6 +75,14 @@ __global__ void update(
     %(V)s V, Vprev1, Vprev2, dV;
     %(I)s I;
     %(spike_state)s spike;
+    %(g_Na)s g_Na;
+    %(g_K)s g_K;
+    %(g_L)s g_L;
+
+    %(E_Na)s E_Na;
+    %(E_K)s E_K;
+    %(E_L)s E_L;
+
     %(n)s n, dn;
     %(m)s m, dm;
     %(h)s h, dh;
@@ -49,14 +90,20 @@ __global__ void update(
 
     for(int i = tid; i < num_comps; i += total_threads)
     {
-        spike = 0.0;
-        V = g_internalV[i];
+        spike = 0;
+        V = g_internalVprev1[i];
         Vprev1 = g_internalVprev1[i];
         Vprev2 = g_internalVprev2[i];
         I = g_I[i];
         n = g_n[i];
         m = g_m[i];
         h = g_h[i];
+        g_Na = g_g_Na[i];
+        g_K = g_g_K[i];
+        g_L = g_g_L[i];
+        E_Na = g_E_Na[i];
+        E_K = g_E_K[i];
+        E_L = g_E_L[i];
 
         for (int j = 0; j < nsteps; ++j)
         {
@@ -74,7 +121,7 @@ __global__ void update(
 
             dh = (1.-h) * (0.07*EXP(-(V+65.)/20.)) - h / (EXP(-(V+35.)/10.)+1.);
 
-            dV = I - 120.*POW(m,3)*h*(V-50.) - 36. * POW(n,4) * (V+77.) - 0.3 * (V+54.387);
+            dV = I - g_Na*POW(m,3)*h*(V-E_Na) - g_K * POW(n,4) * (V-E_K) - g_L * (V-E_L);
 
             n += ddt * dn;
             m += ddt * dm;
@@ -91,10 +138,9 @@ __global__ void update(
         g_m[i] = m;
         g_h[i] = h;
         g_V[i] = V;
-        g_internalV[i] = V;
         g_internalVprev1[i] = Vprev1;
         g_internalVprev2[i] = Vprev2;
-        g_spike_state[i] = MIN(spike, 1.0);
+        g_spike_state[i] = (spike > 0);
     }
 }
 """
@@ -145,11 +191,14 @@ if __name__ == '__main__':
     G = nx.MultiDiGraph()
 
     G.add_node('neuron0', **{
-               'class': 'HodgkinHuxley',
-               'name': 'HodgkinHuxley',
-               'n': 0.,
-               'm': 0.,
-               'h': 1.,
+               'class': 'HodgkinHuxley2',
+               'name': 'HodgkinHuxley2',
+               'g_K': 36.0,
+               'g_Na': 120.0,
+               'g_L': 0.3,
+               'E_K': -77.0,
+               'E_Na': 50.0,
+               'E_L': -54.387,
                })
 
     comp_dict, conns = LPU.graph_to_dicts(G)
