@@ -82,7 +82,7 @@ def test_NDComponent(comp, dt, **kwargs):
         else:
             raise ValueError('comp is a class but not a subclass of NDComponent.')
     elif isinstance(comp, str):
-        path = kwargs.get('module_path', [])
+        path = kwargs.get('module_path', '')
         cls = [(name, obj) for name, obj in LPU.import_NDcomponent_from_path(path) is name == comp]
         if len(cls) == 0:
             raise ValueError('Cannot find any {} model from {}'.format(comp, path))
