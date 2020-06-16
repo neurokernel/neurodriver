@@ -13,7 +13,7 @@ from datetime import datetime
 from neurokernel.LPU.LPU import LPU
 
 class BaseInputProcessor(object):
-    def __init__(self, var_list, mode = 0, memory_mode = 'cpu'
+    def __init__(self, var_list, mode = 0, memory_mode = 'cpu',
                  input_file = None, input_interval = 1,
                  sensory_file = None, sensory_interval = 1):
         # var_list should be a list of (variable, uids)
@@ -79,6 +79,7 @@ class BaseInputProcessor(object):
                 #     self._d_input[var].fill(0)
                 self.LPU_obj.log_info("Invalid mode for Input Processor. " +\
                                       "Defaulting to mode 0(zero input)")
+            self.record()
             return
 
         self.input_to_be_processed = True
@@ -86,30 +87,8 @@ class BaseInputProcessor(object):
         if self.memory_mode == 'cpu':
             for var in self.variables:
                 self._d_input[var].set(self.variables[var]['input'])
-
-        if self.input_file is not None:
-            for var, d in self.variables.items():
-                var_folder = '{}/data'.format(var)
-                if var == 'spike_state':
-                    self.input_file_handle[var_folder].resize((self.input_file_handle[var_folder].shape[0]+1,
-                                                                len(d['uids'])))
-                    self.input_file_handle[var_folder][-1,:] = d['input'].reshape((1,-1))
-                else:
-                    if self.record_count == 0:
-                        if isinstance(var, str):
-                            self.input_file_handle[var_folder].resize((self.input_file_handle[var_folder].shape[0]+1,
-                                                                        len(d['uids'])))
-                            self.input_file_handle[var_folder][-1,:] = d['input'].reshape((1,-1))
-                        elif isinstance(var, tuple):
-                            n = len(var)
-                            for i, ind_var in enumerate(var):
-                                var_subfolder = '{}/{}'.format(var_folder, ind_var)
-                                self.input_file_handle[var_subfolder].resize(
-                                                (self.input_file_handle[var_subfolder].shape[0]+1,
-                                                                            len(d['uids'])))
-                                self.input_file_handle[var_subfolder][-1,:] = d['input'][i::n].reshape((1,-1))
-
-                    self.record_count = (self.record_count + 1) % self.input_interval
+        #TODO, record should be done also when is_input_available = False
+        self.record()
 
 
     def inject_input(self, var):
@@ -124,6 +103,56 @@ class BaseInputProcessor(object):
         # self.add_inds(self._d_input[var], dest_mem, self.dest_inds[var])
         self.add_inds(var, self._d_input[var].gpudata,
                       dest_mem)
+
+    def record(self):
+        if self.input_file is not None:
+            if self.record_count == 0:
+                if not self.is_input_available() and self.mode == 0:
+                    for var, d in self.variables.items():
+                        var_folder = '{}/data'.format(var)
+                        if isinstance(var, str):
+                            self.input_file_handle[var_folder].resize((self.input_file_handle[var_folder].shape[0]+1,
+                                                                        len(d['uids'])))
+                            self.input_file_handle[var_folder][-1,:] = np.zeros((1,d['input'].size))
+                        elif isinstance(var, tuple):
+                            n = len(var)
+                            for i, ind_var in enumerate(var):
+                                var_subfolder = '{}/{}'.format(var_folder, ind_var)
+                                self.input_file_handle[var_subfolder].resize(
+                                                (self.input_file_handle[var_subfolder].shape[0]+1,
+                                                                            len(d['uids'])))
+                                self.input_file_handle[var_subfolder][-1,:] = np.zeros((1,d['input'][i::n].size))
+                else:
+                    for var, d in self.variables.items():
+                        var_folder = '{}/data'.format(var)
+                            # if var == 'spike_state':
+                            #     self.input_file_handle[var_folder].resize((self.input_file_handle[var_folder].shape[0]+1,
+                            #                                                 len(d['uids'])))
+                            #     if self.memory_mode == 'cpu':
+                            #         self.input_file_handle[var_folder][-1,:] = d['input'].reshape((1,-1))
+                            #     elif self.memory_mode == 'gpu':
+                            #         self.input_file_handle[var_folder][-1,:] = self._d_input[var].get().reshape((1,-1))
+                            # else:
+                        if isinstance(var, str):
+                            self.input_file_handle[var_folder].resize((self.input_file_handle[var_folder].shape[0]+1,
+                                                                        len(d['uids'])))
+                            if self.memory_mode == 'cpu':
+                                self.input_file_handle[var_folder][-1,:] = d['input'].reshape((1,-1))
+                            elif self.memory_mode == 'gpu':
+                                self.input_file_handle[var_folder][-1,:] = self._d_input[var].get().reshape((1,-1))
+                        elif isinstance(var, tuple):
+                            n = len(var)
+                            for i, ind_var in enumerate(var):
+                                var_subfolder = '{}/{}'.format(var_folder, ind_var)
+                                self.input_file_handle[var_subfolder].resize(
+                                                (self.input_file_handle[var_subfolder].shape[0]+1,
+                                                                            len(d['uids'])))
+                                # self.input_file_handle[var_subfolder][-1,:] = d['input'][i::n].reshape((1,-1))
+                                if self.memory_mode == 'cpu':
+                                    self.input_file_handle[var_subfolder][-1,:] = d['input'][i::n].reshape((1,-1))
+                                elif self.memory_mode == 'gpu':
+                                    self.input_file_handle[var_subfolder][-1,:] = self._d_input[var].get()[i::n].reshape((1,-1))
+            self.record_count = (self.record_count + 1) % self.input_interval
 
     # Should be implemented by child class
     def update_input(self):
@@ -144,6 +173,7 @@ class BaseInputProcessor(object):
             self.input_file_handle = h5py.File(self.input_file, 'w')
             self.input_file_handle.create_dataset('metadata',(),'i')
             self.input_file_handle['metadata'].attrs['dt'] = self.dt
+            self.input_file_handle['metadata'].attrs['sample_interval'] = self.input_interval
             self.input_file_handle['metadata'].attrs['DateCreated'] = datetime.now().isoformat()
             for k, v in self.metadata:
                 self.input_file_handle['metadata'].attrs[k] = v
