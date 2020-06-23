@@ -125,8 +125,12 @@ class OutputRecorder(BaseOutputProcessor):
             if var != 'spike_state':
                 self.output[var]['data'] = np.vstack(self.output[var]['data'])
             else:
-                self.output[var]['data']['time'] = np.concatenate(self.output[var]['data']['time'])
-                self.output[var]['data']['index'] = np.concatenate(self.output[var]['data']['index'])
+                if len(self.output[var]['data']['time']):
+                    self.output[var]['data']['time'] = np.concatenate(self.output[var]['data']['time'])
+                    self.output[var]['data']['index'] = np.concatenate(self.output[var]['data']['index'])
+                else:
+                    self.output[var]['data']['time'] = np.zeros(0, np.double)
+                    self.output[var]['data']['index'] = np.zeros(0, np.int32)
 
     def get_output(self, var = None, uids = None):
         """
@@ -174,7 +178,7 @@ class OutputRecorder(BaseOutputProcessor):
             try:
                 index = self.output[var]['uids'].index(uid)
             except ValueError:
-                pass
+                output[var] = []
             else:
                 if var == 'spike_state':
                     output[var] = self.output[var]['data']['time'][self.output[var]['data']['index'] == index]
@@ -195,7 +199,7 @@ class OutputRecorder(BaseOutputProcessor):
         try:
             index = self.output[var]['uids'].index(uid)
         except ValueError:
-            pass
+            return []
         else:
             if var == 'spike_state':
                 output = self.output[var]['data']['time'][self.output[var]['data']['index'] == index]
