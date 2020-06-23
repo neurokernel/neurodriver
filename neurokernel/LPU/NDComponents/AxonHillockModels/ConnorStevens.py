@@ -16,6 +16,10 @@ class ConnorStevens(BaseAxonHillockModel):
                              ('internalVprev2',-65.) # Membrane Potential (mV)
                             ])
 
+    @property
+    def maximum_dt_allowed(self):
+        return 1e-5
+
     def pre_run(self, update_pointers):
         super(ConnorStevens, self).pre_run(update_pointers)
         # if 'initV' in self.params_dict:

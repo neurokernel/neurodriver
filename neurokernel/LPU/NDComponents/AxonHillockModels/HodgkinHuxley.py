@@ -13,6 +13,10 @@ class HodgkinHuxley(BaseAxonHillockModel):
                              ('internalVprev1',-65.),  # Membrane Potential (mV)
                              ('internalVprev2',-65.)]) # Membrane Potential (mV)
 
+    @property
+    def maximum_dt_allowed(self):
+        return 1e-5
+
     def get_update_template(self):
         template = """
 #define EXP exp%(fletter)s

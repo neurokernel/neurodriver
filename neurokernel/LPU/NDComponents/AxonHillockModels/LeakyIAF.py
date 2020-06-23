@@ -19,6 +19,9 @@ class LeakyIAF(BaseAxonHillockModel):
     # and are ordered dict whose keys are the variables and value are the initial values.
     internals = OrderedDict([('internalV', 0.0)]) # Membrane Potential (mV)
 
+    @property
+    def maximum_dt_allowed(self):
+        return 1e-4
 
     def pre_run(self, update_pointers):
         # copy initial value for Voltage in update and Voltage in internal state

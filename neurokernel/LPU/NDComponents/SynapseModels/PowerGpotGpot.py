@@ -7,6 +7,10 @@ class PowerGPotGPot(BaseSynapseModel):
     params = ['threshold', 'slope', 'power', 'saturation']
     internals = OrderedDict([])
 
+    @property
+    def maximum_dt_allowed(self):
+        return self.dt
+
     def get_update_template(self):
         template = """
 __global__ void update(int num_comps, %(dt)s dt, int steps,

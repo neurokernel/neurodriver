@@ -26,11 +26,10 @@ class MorrisLecar(BaseMembraneModel):
         self.params_dict = params_dict
         self.access_buffers = access_buffers
         self.dt = np.double(dt)
-        self.steps = max(int(round(dt / 1e-5)), 1)
         self.debug = debug
         self.LPU_id = LPU_id
         self.dtype = params_dict[self.params[0]].dtype
-        self.ddt = dt / self.steps
+        self.dt = dt
 
         self.internal_states = {
             c: garray.zeros(self.num_comps, dtype = self.dtype)+self.internals[c] \
@@ -59,6 +58,9 @@ class MorrisLecar(BaseMembraneModel):
                          self.params_dict['initn'].gpudata,
                          self.params_dict['initn'].nbytes)
 
+    @property
+    def maximum_dt_allowed(self):
+        return 1e-5
 
     def run_step(self, update_pointers, st=None):
         for k in self.inputs:
@@ -66,7 +68,7 @@ class MorrisLecar(BaseMembraneModel):
 
         self.update_func.prepared_async_call(
             self.update_func.grid, self.update_func.block, st,
-            self.num_comps, self.ddt*1000, self.steps,
+            self.num_comps, self.internal_dt*1000, self.internal_steps,
             *[self.inputs[k].gpudata for k in self.accesses]+\
             [self.params_dict[k].gpudata for k in self.params]+\
             [self.internal_states[k].gpudata for k in self.internals]+\

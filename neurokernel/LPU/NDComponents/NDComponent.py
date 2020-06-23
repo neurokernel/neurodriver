@@ -29,6 +29,26 @@ class NDComponent(with_metaclass(ABCMeta, object)):
     def run_step(self, update_pointers):
         pass
 
+    @property
+    @abstractmethod
+    def maximum_dt_allowed(self):
+        pass
+
+    @property
+    def internal_steps(self):
+        if self.dt > self.maximum_dt_allowed:
+            div = self.dt/self.maximum_dt_allowed
+            if np.abs(div - np.round(div)) < 1e-5:
+                return int(np.round(div))
+            else:
+                return int(np.ceil(div))
+            #raise ValueError('Simulation time step dt larger than maximum allowed dt of model {}'.format(type(self)))
+        else:
+            return 1
+
+    @property
+    def internal_dt(self):
+        return self.dt/self.internal_steps
 
     def pre_run(self, update_pointers):
         pass

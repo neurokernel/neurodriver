@@ -92,6 +92,7 @@ def test_NDComponent(comp, dt, **kwargs):
     accesses = extra_comp.accesses
     updates = extra_comp.updates
     params = extra_comp.params
+    extra_params = extra_comp.extra_params
     internals = extra_comp.internals
 
     def process_input(input, extra_comp):
@@ -174,6 +175,10 @@ def test_NDComponent(comp, dt, **kwargs):
                     input_processors.append(
                         ArrayInputProcessor({k: {'uids': [uid]*v.shape[1], 'data': v}}))
                     length.append(v.shape[0])
+                elif isinstance(v, dict) and k == 'spike_state':
+                    input_processors.append(
+                        ArrayInputProcessor({k: {'uids': [uid]*(v['index'].max()+1), 'data': v}}))
+                    length.append(v['time'][-1]+0.5)
             if len(length) == 0:
                 length = None
             else:
@@ -183,7 +188,7 @@ def test_NDComponent(comp, dt, **kwargs):
     input = kwargs.get('input', None)
     input_processors, uid, length = process_input(input, extra_comp)
 
-    set_params = {k: v for k, v in kwargs.items() if k in params}
+    set_params = {k: v for k, v in kwargs.items() if k in params+extra_params}
     set_internals = {'init{}'.format(k): v for k, v in kwargs.items() if k in internals}
 
     args = set_params

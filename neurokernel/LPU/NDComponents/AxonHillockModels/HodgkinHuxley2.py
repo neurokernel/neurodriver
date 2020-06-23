@@ -17,6 +17,9 @@ class HodgkinHuxley2(BaseAxonHillockModel):
                              ('n', 0.),
                              ('m', 0.),
                              ('h', 0.92)]) # Membrane Potential (mV)
+    @property
+    def maximum_dt_allowed(self):
+        return 1e-5
 
     def pre_run(self, update_pointers):
         if 'initV' in self.params_dict:

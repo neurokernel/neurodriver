@@ -70,7 +70,7 @@ class BaseAxonHillockModel(with_metaclass(ABCMeta, NDComponent)):
 
         self.update_func.prepared_async_call(
             self.update_func.grid, self.update_func.block, st,
-            self.num_comps, self.ddt, self.steps,
+            self.num_comps, self.internal_dt, self.internal_steps,
             *[self.inputs[k].gpudata for k in self.accesses]+\
             [self.params_dict[k].gpudata for k in self.params]+\
             [self.internal_states[k].gpudata for k in self.internals]+\

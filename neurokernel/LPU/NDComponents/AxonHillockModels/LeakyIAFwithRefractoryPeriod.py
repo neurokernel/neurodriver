@@ -18,6 +18,10 @@ class LeakyIAFwithRefractoryPeriod(BaseAxonHillockModel):
                              ('refractory_time_left', 0.0) # (ms)
                             ])
 
+    @property
+    def maximum_dt_allowed(self):
+        return 1e-4
+
     def pre_run(self, update_pointers):
         self.add_initializer('resting_potential', 'internalV', update_pointers)
         self.add_initializer('resting_potential', 'V', update_pointers)
@@ -51,6 +55,7 @@ __global__ void update(int num_comps, %(dt)s dt, int nsteps,
     %(time_constant)s time_constant;
     %(bias_current)s bias_current;
     %(refractory_time_left)s refractory_time_left;
+    %(refractory_period)s refractory_period;
     %(dt)s bh;
 
     for(int i = tid; i < num_comps; i += total_threads)
@@ -65,20 +70,29 @@ __global__ void update(int num_comps, %(dt)s dt, int nsteps,
         resting_potential = g_resting_potential[i];
         threshold = g_threshold[i];
         bias_current = g_bias_current[i];
+        refractory_period = g_refractory_period[i];
 
         bh = exp%(fletter)s(-ddt/time_constant);
 
         for (int j = 0; j < nsteps; ++j)
         {
-            refractory_time_left = fmax%(fletter)s(refractory_time_left - ddt, 0);
             V = V*bh + ((refractory_time_left == 0 ? time_constant/capacitance*(I+bias_current) : 0) + resting_potential) * (1.0 - bh);
-
-
+            /*
+            V = refractory_time_left == 0 ? (V*bh + (time_constant/capacitance*(I+bias_current) + resting_potential) * (1.0-bh)) : reset_potential;
+            if(refractory_time_left == 0)
+            {
+                V +=  ddt * ( (resting_potential - V)/time_constant + (I+bias_current)/capacitance);
+            }else
+            {
+                V = reset_potential;
+            }
+            */
+            refractory_time_left = fmax%(fletter)s(refractory_time_left - ddt, 0.0);
             if (V >= threshold)
             {
                 V = reset_potential;
                 spike = 1;
-                refractory_time_left += g_refractory_period[i];
+                refractory_time_left += refractory_period;
             }
         }
 
