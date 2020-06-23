@@ -1,3 +1,6 @@
+
+from collections import OrderedDict
+
 import h5py
 import numpy as np
 
@@ -106,6 +109,8 @@ class ArrayInputProcessor(BaseInputProcessor):
         if var in self.variables:
             if var == 'spike_state':
                 if isinstance(data, dict):
+                    assert issubclass(data['index'].dtype.type, np.integer), \
+                           'spike index array must be integer dtype'
                     self.data[var]['time'] = np.concatenate(
                             self.data[var]['time'], data['time'])
                     self.data[var]['index'] = np.concatenate(
@@ -217,9 +222,9 @@ class ArrayInputProcessor(BaseInputProcessor):
         i = 0
         while True:
             tmp = self.dsets[var]['time'][self.last_read_index[var]:self.last_read_index[var]+10000]
-            if tmp[0] >= next_time:
+            if tmp[0] + self.sim_dt/100 >= next_time:
                 break
-            last_spike = tmp.shape[0] - np.argmax(tmp[::-1] < next_time)
+            last_spike = tmp.shape[0] - np.argmax(tmp[::-1] + self.sim_dt/100 < next_time)
             index = self.dsets[var]['index'][self.last_read_index[var]:self.last_read_index[var]+last_spike]
             spike_times.append(tmp[:last_spike])
             spike_index.append(index[:last_spike])
@@ -231,14 +236,15 @@ class ArrayInputProcessor(BaseInputProcessor):
                 break
         if len(spike_times):
             spike_times = np.concatenate(spike_times) - current_time
-            spike_time_ids = np.floor(spike_times/self.sim_dt).astype(np.int32)
+            spike_time_ids = np.floor(spike_times/self.sim_dt+np.finfo(spike_times.dtype).eps*(1/self.sim_dt)).astype(np.int32)
             spike_index = np.concatenate(spike_index)
             tmp = np.zeros(self.cache[var].shape, self.cache[var].dtype)
-            self.block_total[var] = tmp.shape[0]
+            self.block_total[var] = self.cache[var].shape[0]
             np.add.at(tmp, (spike_time_ids, spike_index), 1)
             self.cache[var].set(tmp)
         else:
             self.cache[var].fill(0)
+            self.block_total[var] = self.cache[var].shape[0]
 
     @property
     def end_of_input(self):
@@ -279,8 +285,8 @@ class ArrayInputProcessor(BaseInputProcessor):
             return self._get_input_by_var_and_uids(var, uids)
 
     def _get_input_by_var(self, var):
-        uids = self.data[var]['uids']
-        data = self.data[var]['data']
+        uids = self.variables[var]['uids']
+        data = self.data[var]
         if var == 'spike_state' and self.spike_state_format == 'event':
             input = {uid: data['time'][data['index']==i] for i, uid in enumerate(uids)}
         else:
@@ -291,14 +297,14 @@ class ArrayInputProcessor(BaseInputProcessor):
         input = {}
         for var in self.data:
             try:
-                index = self.data[var]['uids'].index(uid)
+                index = self.variables[var]['uids'].index(uid)
             except ValueError:
                 pass
             else:
                 if var == 'spike_state' and self.spike_state_format == 'event':
-                    input[var] = self.data[var]['data']['time'][self.data[var]['data']['index'] == index]
+                    input[var] = self.data[var]['time'][self.data[var]['index'] == index]
                 else:
-                    input[var] = self.data[var]['data'][:,index].copy()
+                    input[var] = self.data[var][:,index].copy()
         return input
 
     def _get_input_by_uids(self, uids):
@@ -312,14 +318,14 @@ class ArrayInputProcessor(BaseInputProcessor):
     def _get_input_by_var_and_uid(self, var, uid):
         input = None
         try:
-            index = self.data[var]['uids'].index(uid)
+            index = self.variables[var]['uids'].index(uid)
         except ValueError:
             pass
         else:
             if var == 'spike_state' and self.spike_state_format == 'event':
-                input = self.data[var]['data']['time'][self.data[var]['data']['index'] == index]
+                input = self.data[var]['time'][self.data[var]['index'] == index]
             else:
-                input = self.data[var]['data'][:,index].copy()
+                input = self.data[var][:,index].copy()
         return input
 
     def _get_input_by_var_and_uids(self, var, uids):
@@ -346,11 +352,11 @@ class ArrayInputProcessor(BaseInputProcessor):
                     h5file.create_dataset(var + '/data/index',
                                           dtype = np.int32,
                                           maxshape = (None,),
-                                          data = self.data[var]['data']['index'])
+                                          data = self.data[var]['index'])
                     h5file.create_dataset(var + '/data/time',
                                           dtype = np.double,
                                           maxshape = (None,),
-                                          data = self.data[var]['data']['time'])
+                                          data = self.data[var]['time'])
                 else:
                     h5file.create_dataset(var + '/data',
                                           dtype = self.data[var]['data'].dtype,
