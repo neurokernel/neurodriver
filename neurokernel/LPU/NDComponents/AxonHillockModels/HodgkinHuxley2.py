@@ -12,8 +12,12 @@ class HodgkinHuxley2(BaseAxonHillockModel):
               'E_Na',
               'E_L'
               ]
-    internals = OrderedDict([('internalVprev1',-65.),  # Membrane Potential (mV)
-                             ('internalVprev2',-65.),
+    extra_params = ['initV',
+                    'initn',
+                    'initm',
+                    'inith']
+    internals = OrderedDict([('V',-65.),  # Membrane Potential (mV)
+                             ('Vprev1',-65.),
                              ('n', 0.),
                              ('m', 0.),
                              ('h', 0.92)]) # Membrane Potential (mV)
@@ -22,28 +26,11 @@ class HodgkinHuxley2(BaseAxonHillockModel):
         return 1e-5
 
     def pre_run(self, update_pointers):
-        if 'initV' in self.params_dict:
-            cuda.memcpy_dtod(int(update_pointers['V']),
-                             self.params_dict['initV'].gpudata,
-                             self.params_dict['initV'].nbytes)
-            cuda.memcpy_dtod(self.internal_states['internalVprev1'].gpudata,
-                             self.params_dict['initV'].gpudata,
-                             self.params_dict['initV'].nbytes)
-            cuda.memcpy_dtod(self.internal_states['internalVprev2'].gpudata,
-                             self.params_dict['initV'].gpudata,
-                             self.params_dict['initV'].nbytes)
-        if 'initn' in self.params_dict:
-            cuda.memcpy_dtod(self.internal_states['n'].gpudata,
-                             self.params_dict['initn'].gpudata,
-                             self.params_dict['initn'].nbytes)
-        if 'initm' in self.params_dict:
-            cuda.memcpy_dtod(self.internal_states['m'].gpudata,
-                             self.params_dict['initm'].gpudata,
-                             self.params_dict['initm'].nbytes)
-        if 'inith' in self.params_dict:
-            cuda.memcpy_dtod(self.internal_states['h'].gpudata,
-                             self.params_dict['inith'].gpudata,
-                             self.params_dict['inith'].nbytes)
+        super(HodgkinHuxley2, self).pre_run(update_pointers)
+        self.add_initializer('initV', 'Vprev1', update_pointers)
+        self.add_initializer('initn', 'n', update_pointers)
+        self.add_initializer('initm', 'm', update_pointers)
+        self.add_initializer('inith', 'h', update_pointers)
 
     def get_update_template(self):
         template = """
@@ -55,48 +42,48 @@ __global__ void update(
     int num_comps,
     %(dt)s dt,
     int nsteps,
-    %(I)s* g_I,
-    %(g_K)s* g_g_K,
-    %(g_Na)s* g_g_Na,
-    %(g_L)s* g_g_L,
-    %(E_K)s* g_E_K,
-    %(E_Na)s* g_E_Na,
-    %(E_L)s* g_E_L,
-    %(internalVprev1)s* g_internalVprev1,
-    %(internalVprev2)s* g_internalVprev2,
-    %(n)s* g_n,
-    %(m)s* g_m,
-    %(h)s* g_h,
-    %(spike_state)s* g_spike_state,
-    %(V)s* g_V)
+    %(input_I)s* g_I,
+    %(param_g_K)s* g_g_K,
+    %(param_g_Na)s* g_g_Na,
+    %(param_g_L)s* g_g_L,
+    %(param_E_K)s* g_E_K,
+    %(param_E_Na)s* g_E_Na,
+    %(param_E_L)s* g_E_L,
+    %(internal_V)s* g_internalV,
+    %(internal_Vprev2)s* g_Vprev1,
+    %(internal_n)s* g_n,
+    %(internal_m)s* g_m,
+    %(internal_h)s* g_h,
+    %(update_spike_state)s* g_spike_state,
+    %(update_V)s* g_V)
 {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int total_threads = gridDim.x * blockDim.x;
 
     %(dt)s ddt = dt*1000.; // s to ms
 
-    %(V)s V, Vprev1, Vprev2, dV;
-    %(I)s I;
-    %(spike_state)s spike;
-    %(g_Na)s g_Na;
-    %(g_K)s g_K;
-    %(g_L)s g_L;
+    %(update_V)s V, Vprev1, Vprev2, dV;
+    %(input_I)s I;
+    %(update_spike_state)s spike;
+    %(param_g_Na)s g_Na;
+    %(param_g_K)s g_K;
+    %(param_g_L)s g_L;
 
-    %(E_Na)s E_Na;
-    %(E_K)s E_K;
-    %(E_L)s E_L;
+    %(param_E_Na)s E_Na;
+    %(param_E_K)s E_K;
+    %(param_E_L)s E_L;
 
-    %(n)s n, dn;
-    %(m)s m, dm;
-    %(h)s h, dh;
-    %(n)s a;
+    %(internal_n)s n, dn;
+    %(internal_m)s m, dm;
+    %(internal_h)s h, dh;
+    %(internal_n)s a;
 
     for(int i = tid; i < num_comps; i += total_threads)
     {
         spike = 0;
-        V = g_internalVprev1[i];
-        Vprev1 = g_internalVprev1[i];
-        Vprev2 = g_internalVprev2[i];
+        V = g_internalV[i];
+        Vprev1 = V;
+        Vprev2 = g_Vprev1[i];
         I = g_I[i];
         n = g_n[i];
         m = g_m[i];
@@ -141,8 +128,8 @@ __global__ void update(
         g_m[i] = m;
         g_h[i] = h;
         g_V[i] = V;
-        g_internalVprev1[i] = Vprev1;
-        g_internalVprev2[i] = Vprev2;
+        g_internalV[i] = Vprev1;
+        g_Vprev1[i] = Vprev2;
         g_spike_state[i] = (spike > 0);
     }
 }

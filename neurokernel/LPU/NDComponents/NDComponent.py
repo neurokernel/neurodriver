@@ -59,6 +59,17 @@ class NDComponent(with_metaclass(ABCMeta, object)):
         '''
         pass
 
+    def add_initializer(self, var_a, var_b, update_pointers):
+        if var_a in self.params_dict:
+            if var_b in self.internal_states:
+                cuda.memcpy_dtod(self.internal_states[var_b].gpudata,
+                                    self.params_dict[var_a].gpudata,
+                                    self.params_dict[var_a].nbytes)
+            if var_b in update_pointers:
+                cuda.memcpy_dtod(int(update_pointers[var_b]),
+                                    self.params_dict[var_a].gpudata,
+                                    self.params_dict[var_a].nbytes)
+
     def sum_in_variable(self, var, garr, st=None):
         try:
             a = self.sum_kernel

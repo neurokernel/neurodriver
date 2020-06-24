@@ -20,6 +20,10 @@ class BaseAxonHillockModel(with_metaclass(ABCMeta, NDComponent)):
 
     accesses = ['I']
     updates = ['spike_state','V']
+    extra_params = []
+    params = []
+    internals = OrderedDict([('V', -65.)])
+
     def __init__(self, params_dict, access_buffers, dt,
                  debug=False, LPU_id=None, cuda_verbose=True):
         if cuda_verbose:
@@ -48,21 +52,14 @@ class BaseAxonHillockModel(with_metaclass(ABCMeta, NDComponent)):
             for k in self.accesses}
 
         dtypes = {'dt': self.dtype}
-        dtypes.update({k: self.inputs[k].dtype for k in self.accesses})
-        dtypes.update({k: self.params_dict[k].dtype for k in self.params})
-        dtypes.update({k: self.internal_states[k].dtype for k in self.internals})
-        dtypes.update({k: self.dtype for k in self.updates})
+        dtypes.update({'input_{}'.format(k): self.inputs[k].dtype for k in self.accesses})
+        dtypes.update({'param_{}'.format(k): self.params_dict[k].dtype for k in self.params})
+        dtypes.update({'internal_{}'.format(k): self.internal_states[k].dtype for k in self.internals})
+        dtypes.update({'update_{}'.format(k): self.dtype for k in self.updates})
         self.update_func = self.get_update_func(dtypes)
 
     def pre_run(self, update_pointers):
-        if 'initV' in self.params_dict:
-            cuda.memcpy_dtod(int(update_pointers['V']),
-                             self.params_dict['initV'].gpudata,
-                             self.params_dict['initV'].nbytes)
-            cuda.memcpy_dtod(self.internal_states['internalV'].gpudata,
-                             self.params_dict['initV'].gpudata,
-                             self.params_dict['initV'].nbytes)
-
+        self.add_initializer('initV', 'V', update_pointer)
 
     def run_step(self, update_pointers, st=None):
         for k in self.inputs:
@@ -91,14 +88,3 @@ class BaseAxonHillockModel(with_metaclass(ABCMeta, NDComponent)):
         func.grid = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
                          (self.num_comps-1) // 128 + 1), 1)
         return func
-
-    def add_initializer(self, var_a, var_b, update_pointers):
-        if var_a in self.params_dict:
-            if var_b in self.internal_states:
-                cuda.memcpy_dtod(self.internal_states[var_b].gpudata,
-                                    self.params_dict[var_a].gpudata,
-                                    self.params_dict[var_a].nbytes)
-            if var_b in update_pointers:
-                cuda.memcpy_dtod(int(update_pointers[var_b]),
-                                    self.params_dict[var_a].gpudata,
-                                    self.params_dict[var_a].nbytes)

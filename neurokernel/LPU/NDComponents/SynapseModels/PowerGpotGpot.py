@@ -14,20 +14,20 @@ class PowerGPotGPot(BaseSynapseModel):
     def get_update_template(self):
         template = """
 __global__ void update(int num_comps, %(dt)s dt, int steps,
-                       %(V)s* g_V, %(threshold)s* g_threshold,
-                       %(slope)s* g_slope, %(power)s* g_power,
-                       %(saturation)s* g_saturation,
-                       %(g)s* g_g)
+                       %(input_V)s* g_V, %(param_threshold)s* g_threshold,
+                       %(param_slope)s* g_slope, %(param_power)s* g_power,
+                       %(param_saturation)s* g_saturation,
+                       %(update_g)s* g_g)
 {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int total_threads = gridDim.x * blockDim.x;
 
     %(dt)s ddt = dt*1000.; // s to ms
-    %(V)s V;
-    %(threshold)s threshold;
-    %(slope)s slope;
-    %(power)s power;
-    %(saturation)s saturation;
+    %(input_V)s V;
+    %(param_threshold)s threshold;
+    %(param_slope)s slope;
+    %(param_power)s power;
+    %(param_saturation)s saturation;
 
     for(int i = tid; i < num_comps; i += total_threads)
     {

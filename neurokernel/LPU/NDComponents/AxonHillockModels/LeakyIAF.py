@@ -15,27 +15,19 @@ class LeakyIAF(BaseAxonHillockModel):
               'capacitance', # (\mu F/cm^2)
               'resistance' # (k\Omega cm.^2)
               ]
+    extra_params = ['initV']
     # internals are the variables used to store internal states of the model,
     # and are ordered dict whose keys are the variables and value are the initial values.
-    internals = OrderedDict([('internalV', 0.0)]) # Membrane Potential (mV)
+    internals = OrderedDict([('V', 0.0)]) # Membrane Potential (mV)
 
     @property
     def maximum_dt_allowed(self):
         return 1e-4
 
     def pre_run(self, update_pointers):
-        # copy initial value for Voltage in update and Voltage in internal state
-        # change the variable names such as 'initV' or 'resting_potential'
-
-        # if 'initV' is specified in the parameter dict,
-        # it will be used as initial value
-        if 'initV' in self.params_dict:
-            self.add_initializer('initV', 'V', update_pointers)
-            self.add_initializer('initV', 'internalV', update_pointers)
-        else:
-            # use resting potential as initial value
+        super(LeakyIAF, self).pre_run(update_pointers)
+        if 'initV' not in self.params_dict:
             self.add_initializer('resting_potential', 'V', update_pointers)
-            self.add_initializer('resting_potential', 'internalV', update_pointers)
 
     def get_update_template(self):
         # need to update the CUDA kernel to reflect the equations of the model
@@ -51,29 +43,29 @@ class LeakyIAF(BaseAxonHillockModel):
 __global__ void update(int num_comps,
                %(dt)s dt,
                int nsteps,
-               %(I)s* g_I, // accesses
-               %(resting_potential)s* g_resting_potential, // params
-               %(threshold)s* g_threshold,
-               %(reset_potential)s* g_reset_potential,
-               %(capacitance)s* g_capacitance,
-               %(resistance)s* g_resistance,
-               %(internalV)s* g_internalV, // internals
-               %(spike_state)s* g_spike_state, //updates
-               %(V)s* g_V)
+               %(input_I)s* g_I, // accesses
+               %(param_resting_potential)s* g_resting_potential, // params
+               %(param_threshold)s* g_threshold,
+               %(param_reset_potential)s* g_reset_potential,
+               %(param_capacitance)s* g_capacitance,
+               %(param_resistance)s* g_resistance,
+               %(internal_V)s* g_internalV, // internals
+               %(update_spike_state)s* g_spike_state, //updates
+               %(update_V)s* g_V)
 {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int total_threads = gridDim.x * blockDim.x;
 
     // instantiate variables
     %(dt)s ddt = dt*1000.; // s to ms
-    %(V)s V;
-    %(I)s I;
-    %(spike_state)s spike;
-    %(resting_potential)s resting_potential;
-    %(threshold)s threshold;
-    %(reset_potential)s reset_potential;
-    %(capacitance)s capacitance;
-    %(resistance)s resistance;
+    %(update_V)s V;
+    %(input_I)s I;
+    %(update_spike_state)s spike;
+    %(param_resting_potential)s resting_potential;
+    %(param_threshold)s threshold;
+    %(param_reset_potential)s reset_potential;
+    %(param_capacitance)s capacitance;
+    %(param_resistance)s resistance;
     %(dt)s bh;
 
     // no need to change this for loop

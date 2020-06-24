@@ -16,7 +16,6 @@ class AlphaSynapse(BaseSynapseModel):
     def maximum_dt_allowed(self):
         return 1e-4
 
-
     def get_update_template(self):
         # The following kernel assumes a maximum of one input connection
         # per neuron
