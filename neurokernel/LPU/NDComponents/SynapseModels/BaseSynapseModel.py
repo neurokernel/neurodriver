@@ -33,7 +33,7 @@ class BaseSynapseModel(with_metaclass(ABCMeta, NDComponent)):
         self.LPU_id = LPU_id
         self.dt = np.double(dt)
         self.ddt = np.double(1e-6)
-        self.steps = np.int32(max( int(self.dt/self.ddt), 1 ))
+        self.steps = int(np.ceil(max( int(self.dt/self.ddt), 1 )))
 
         self.params_dict = params_dict
         self.access_buffers = access_buffers

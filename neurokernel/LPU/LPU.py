@@ -657,7 +657,7 @@ class LPU(Module):
         assert('interface' in columns)
         self.LPU_id = id
         self.dt = dt
-        self.time = 0
+        self.step = 0
         self._debug = debug
         self.device = device
         self._default_dtype = default_dtype
@@ -1607,7 +1607,7 @@ class LPU(Module):
         # Step through buffers
         self.memory_manager.step()
 
-        self.time += self.dt
+        self.step += 1
 
         # Instruct Control inteface to process any pending commands
         if self.control_inteface: self.control_inteface.process_commands()
@@ -1715,6 +1715,9 @@ class LPU(Module):
                                      'cls':cls} \
                        for cls in comp_classes if not cls.__name__[:4]=='Base'}
 
+    @property
+    def time(self):
+        return self.step*self.dt
 
 class uid_generator(object):
     def __init__(self):

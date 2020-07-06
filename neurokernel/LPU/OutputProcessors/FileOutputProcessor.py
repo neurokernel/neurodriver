@@ -156,3 +156,23 @@ class FileOutputProcessor(BaseOutputProcessor):
                 self.h5file[var + '/data/index'][-nspikes:] = index.astype(np.int32)
         self.h5file.flush()
         self.h5file.close()
+
+
+def read_output_file(filename):
+    output = {}
+    with h5py.File(filename, 'r') as f:
+        output['metadata'] = {'start_time': f['metadata'].attrs['start_time'],
+                          'sample_interval': f['metadata'].attrs['sample_interval'],
+                          'dt': f['metadata'].attrs['dt'],
+                          'DateCreated': f['metadata'].attrs['DateCreated']}
+        for var in f:
+            if var != 'meta':
+                if var == 'spike_state':
+                    output[var] = {'uids': f[var]['uids'][:],
+                                   'data': {'time': f[var]['data']['time'][:],
+                                            'index': f[var]['data']['index'][:]}
+                                  }
+                else:
+                    output[var] = {'uids': f[var]['uids'][:],
+                                   'data': f[var]['data'][:]}
+    return output
