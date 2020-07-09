@@ -11,16 +11,19 @@ class ConnorStevens(BaseAxonHillockModel):
               'a', # state variable for activation of A channel ([0-1] unitless)
               'b' # state variable for inactivation of A channel ([0-1] unitless)
               ]
-    internals = OrderedDict([('internalV',-65.), # Membrane Potential (mV)
-                             ('internalVprev1',-65.), # Membrane Potential (mV)
-                             ('internalVprev2',-65.) # Membrane Potential (mV)
+    extra_params = ['initV']
+    internals = OrderedDict([('V',-65.), # Membrane Potential (mV)
+                             ('Vprev1',-65.) # Membrane Potential (mV)
                             ])
+
+    @property
+    def maximum_dt_allowed(self):
+        return 1e-5
 
     def pre_run(self, update_pointers):
         super(ConnorStevens, self).pre_run(update_pointers)
         # if 'initV' in self.params_dict:
-        self.add_initializer('initV', 'internalVprev1', update_pointers)
-        self.add_initializer('initV', 'internalVprev2', update_pointers)
+        self.add_initializer('initV', 'Vprev1', update_pointers)
 
     def get_update_template(self):
         template = """
@@ -44,32 +47,31 @@ __global__ void update(
     int num_comps,
     %(dt)s dt,
     int nsteps,
-    %(I)s* g_I,
-    %(n)s* g_n,
-    %(m)s* g_m,
-    %(h)s* g_h,
-    %(a)s* g_a,
-    %(b)s* g_b,
-    %(internalV)s* g_internalV,
-    %(internalVprev1)s* g_internalVprev1,
-    %(internalVprev2)s* g_internalVprev2,
-    %(spike_state)s* g_spike_state,
-    %(V)s* g_V)
+    %(input_I)s* g_I,
+    %(param_n)s* g_n,
+    %(param_m)s* g_m,
+    %(param_h)s* g_h,
+    %(param_a)s* g_a,
+    %(param_b)s* g_b,
+    %(internal_V)s* g_Vprev,
+    %(internal_Vprev1)s* g_Vprev1,
+    %(update_spike_state)s* g_spike_state,
+    %(update_V)s* g_V)
 {
 	int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int total_threads = gridDim.x * blockDim.x;
 
     %(dt)s ddt = dt*1000.; // s to ms
 
-    %(V)s V, Vprev1, Vprev2;
-    %(I)s I;
-    %(spike_state)s spike;
+    %(update_V)s V, Vprev1, Vprev2;
+    %(input_I)s I;
+    %(update_spike_state)s spike;
 
-    %(n)s n, a_n, b_n, n_inf, tau_n;
-    %(m)s m, a_m, b_m, m_inf, tau_m;
-    %(h)s h, a_h, b_h, h_inf, tau_h;
-    %(a)s a, a_inf, tau_a;
-    %(b)s b, b_inf, tau_b;
+    %(param_n)s n, a_n, b_n, n_inf, tau_n;
+    %(param_m)s m, a_m, b_m, m_inf, tau_m;
+    %(param_h)s h, a_h, b_h, h_inf, tau_h;
+    %(param_a)s a, a_inf, tau_a;
+    %(param_b)s b, b_inf, tau_b;
 
 
     for(int i = tid; i < num_comps; i += total_threads)
@@ -81,9 +83,9 @@ __global__ void update(
         h = g_h[i];
         a = g_a[i];
         b = g_b[i];
-        V = g_internalV[i];
-        Vprev1 = g_internalVprev1[i];
-        Vprev2 = g_internalVprev2[i];
+        V = g_Vprev[i];
+        Vprev1 = V;
+        Vprev2 = g_Vprev1[i];
 
         for (int j = 0; j < nsteps; ++j)
         {
@@ -129,9 +131,8 @@ __global__ void update(
         g_a[i] = a;
         g_b[i] = b;
         g_V[i] = V;
-        g_internalV[i] = V;
-        g_internalVprev1[i] = Vprev1;
-        g_internalVprev2[i] = Vprev2;
+        g_internalV = V;
+        g_Vprev1[i] = Vprev2;
         g_spike_state[i] = (spike > 0);
     }
 }

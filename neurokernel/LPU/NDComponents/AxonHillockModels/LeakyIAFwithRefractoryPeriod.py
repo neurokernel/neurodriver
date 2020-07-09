@@ -14,43 +14,50 @@ class LeakyIAFwithRefractoryPeriod(BaseAxonHillockModel):
               'time_constant', # (ms)
               'bias_current' # (\mu A/cm^2)
               ]
-    internals = OrderedDict([('internalV', 0.0), # Membrane Potential (mV)
+    extra_params = ['initV']
+    internals = OrderedDict([('V', 0.0), # Membrane Potential (mV). This is required to keep track of previous value since they are not given at run_step.
                              ('refractory_time_left', 0.0) # (ms)
                             ])
 
+    @property
+    def maximum_dt_allowed(self):
+        return 1e-4
+
     def pre_run(self, update_pointers):
-        self.add_initializer('resting_potential', 'internalV', update_pointers)
-        self.add_initializer('resting_potential', 'V', update_pointers)
+        super(LeakyIAFwithRefractoryPeriod, self).pre_run(update_pointers)
+        if 'initV' not in self.params_dict:
+            self.add_initializer('resting_potential', 'V', update_pointers)
 
     def get_update_template(self):
         template = """
 __global__ void update(int num_comps, %(dt)s dt, int nsteps,
-               %(I)s* g_I,
-               %(resting_potential)s* g_resting_potential,
-               %(threshold)s* g_threshold,
-               %(reset_potential)s* g_reset_potential,
-               %(capacitance)s* g_capacitance,
-               %(refractory_period)s* g_refractory_period,
-               %(time_constant)s* g_time_constant,
-               %(bias_current)s* g_bias_current,
-               %(internalV)s* g_internalV,
-               %(refractory_time_left)s* g_refractory_time_left,
-               %(spike_state)s* g_spike_state, %(V)s* g_V)
+               %(input_I)s* g_I,
+               %(param_resting_potential)s* g_resting_potential,
+               %(param_threshold)s* g_threshold,
+               %(param_reset_potential)s* g_reset_potential,
+               %(param_capacitance)s* g_capacitance,
+               %(param_refractory_period)s* g_refractory_period,
+               %(param_time_constant)s* g_time_constant,
+               %(param_bias_current)s* g_bias_current,
+               %(internal_V)s* g_internalV,
+               %(internal_refractory_time_left)s* g_refractory_time_left,
+               %(update_spike_state)s* g_spike_state, %(update_V)s* g_V)
 {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int total_threads = gridDim.x * blockDim.x;
 
     %(dt)s ddt = dt*1000.; // s to ms
-    %(V)s V;
-    %(I)s I;
-    %(spike_state)s spike;
-    %(resting_potential)s resting_potential;
-    %(threshold)s threshold;
-    %(reset_potential)s reset_potential;
-    %(capacitance)s capacitance;
-    %(time_constant)s time_constant;
-    %(bias_current)s bias_current;
-    %(refractory_time_left)s refractory_time_left;
+    %(update_V)s V;
+    %(input_I)s I;
+    %(update_spike_state)s spike;
+    %(param_resting_potential)s resting_potential;
+    %(param_threshold)s threshold;
+    %(param_reset_potential)s reset_potential;
+    %(param_capacitance)s capacitance;
+    %(param_time_constant)s time_constant;
+    %(param_bias_current)s bias_current;
+    %(internal_refractory_time_left)s refractory_time_left;
+    %(param_refractory_period)s refractory_period;
     %(dt)s bh;
 
     for(int i = tid; i < num_comps; i += total_threads)
@@ -65,20 +72,20 @@ __global__ void update(int num_comps, %(dt)s dt, int nsteps,
         resting_potential = g_resting_potential[i];
         threshold = g_threshold[i];
         bias_current = g_bias_current[i];
+        refractory_period = g_refractory_period[i];
 
         bh = exp%(fletter)s(-ddt/time_constant);
 
         for (int j = 0; j < nsteps; ++j)
         {
-            refractory_time_left = fmax%(fletter)s(refractory_time_left - ddt, 0);
             V = V*bh + ((refractory_time_left == 0 ? time_constant/capacitance*(I+bias_current) : 0) + resting_potential) * (1.0 - bh);
 
-
+            refractory_time_left = fmax%(fletter)s(refractory_time_left - ddt, 0.0);
             if (V >= threshold)
             {
                 V = reset_potential;
                 spike = 1;
-                refractory_time_left += g_refractory_period[i];
+                refractory_time_left += refractory_period;
             }
         }
 

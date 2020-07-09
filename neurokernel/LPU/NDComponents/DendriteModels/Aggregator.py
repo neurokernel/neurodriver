@@ -35,6 +35,10 @@ class Aggregator(BaseDendriteModel):
 
         self.update = self.get_update_func(self.access_buffers['g'].dtype)
 
+    @property
+    def maximum_dt_allowed(self):
+        return self.dt
+
     def run_step(self, update_pointers, st=None):
         self.update.prepared_async_call(\
                         self.grid, self.block, st,

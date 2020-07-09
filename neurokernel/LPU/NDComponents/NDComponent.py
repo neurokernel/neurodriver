@@ -29,6 +29,26 @@ class NDComponent(with_metaclass(ABCMeta, object)):
     def run_step(self, update_pointers):
         pass
 
+    @property
+    @abstractmethod
+    def maximum_dt_allowed(self):
+        pass
+
+    @property
+    def internal_steps(self):
+        if self.dt > self.maximum_dt_allowed:
+            div = self.dt/self.maximum_dt_allowed
+            if np.abs(div - np.round(div)) < 1e-5:
+                return int(np.round(div))
+            else:
+                return int(np.ceil(div))
+            #raise ValueError('Simulation time step dt larger than maximum allowed dt of model {}'.format(type(self)))
+        else:
+            return 1
+
+    @property
+    def internal_dt(self):
+        return self.dt/self.internal_steps
 
     def pre_run(self, update_pointers):
         pass
@@ -38,6 +58,17 @@ class NDComponent(with_metaclass(ABCMeta, object)):
         This method will be called at the end of the simulation.
         '''
         pass
+
+    def add_initializer(self, var_a, var_b, update_pointers):
+        if var_a in self.params_dict:
+            if var_b in self.internal_states:
+                cuda.memcpy_dtod(self.internal_states[var_b].gpudata,
+                                    self.params_dict[var_a].gpudata,
+                                    self.params_dict[var_a].nbytes)
+            if var_b in update_pointers:
+                cuda.memcpy_dtod(int(update_pointers[var_b]),
+                                    self.params_dict[var_a].gpudata,
+                                    self.params_dict[var_a].nbytes)
 
     def sum_in_variable(self, var, garr, st=None):
         try:
