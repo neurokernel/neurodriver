@@ -5,6 +5,7 @@ class PowerGPotGPot(BaseSynapseModel):
     accesses = ['V']
     updates = ['g']
     params = ['threshold', 'slope', 'power', 'saturation']
+    extra_params = []
     internals = OrderedDict([])
 
     @property
