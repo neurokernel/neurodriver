@@ -57,7 +57,7 @@ class BaseAxonHillockModel(with_metaclass(ABCMeta, NDComponent)):
         self.update_func = self.get_update_func(dtypes)
 
     def pre_run(self, update_pointers):
-        self.add_initializer('initV', 'V', update_pointer)
+        self.add_initializer('initV', 'V', update_pointers)
 
     def run_step(self, update_pointers, st=None):
         for k in self.inputs:
