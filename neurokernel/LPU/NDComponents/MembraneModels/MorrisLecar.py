@@ -21,7 +21,7 @@ class MorrisLecar(BaseMembraneModel):
 
     def get_update_template(self):
         template = """
-__device__ %(n)s compute_n(%(update_V)s V, %(internal_n)s n, %(param_V3)s V3, %(param_V4)s V4, %(param_phi)s phi)
+__device__ %(internal_n)s compute_n(%(update_V)s V, %(internal_n)s n, %(param_V3)s V3, %(param_V4)s V4, %(param_phi)s phi)
 {
     %(internal_n)s n_inf = 0.5 * (1 + tanh((V - V3) / V4));
     %(internal_n)s dn = phi * cosh(( V - V3) / (V4*2)) * (n_inf - n);
