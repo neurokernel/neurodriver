@@ -28,7 +28,7 @@ __device__ %(internal_n)s compute_n(%(update_V)s V, %(internal_n)s n, %(param_V3
     return dn;
 }
 
-__device__ %(update_V)s compute_V(%(update_V)s V, %(update_n)s n, %(input_I)s I, %(param_V1)s V1, %(param_V2)s V2,
+__device__ %(update_V)s compute_V(%(update_V)s V, %(internal_n)s n, %(input_I)s I, %(param_V1)s V1, %(param_V2)s V2,
                            %(param_offset)s offset, %(param_V_L)s V_L, %(param_V_Ca)s V_Ca,
                            %(param_V_K)s V_K, %(param_g_L)s g_L, %(param_g_K)s g_K, %(param_g_Ca)s g_Ca)
 {
@@ -38,7 +38,7 @@ __device__ %(update_V)s compute_V(%(update_V)s V, %(update_n)s n, %(input_I)s I,
 }
 
 __global__ void
-morris_lecar_multiple(int num_comps, %(dt)s dt, int nsteps,
+update(int num_comps, %(dt)s dt, int nsteps,
                       %(input_I)s* g_I, %(param_V1)s* g_V1, %(param_V2)s* g_V2, %(param_V3)s* g_V3,
                       %(param_V4)s* g_V4, %(param_phi)s* g_phi, %(param_offset)s* g_offset,
                       %(param_V_L)s* g_V_L, %(param_V_Ca)s* g_V_Ca, %(param_V_K)s* g_V_K,
