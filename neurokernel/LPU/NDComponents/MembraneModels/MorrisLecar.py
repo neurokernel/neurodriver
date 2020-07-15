@@ -3,11 +3,6 @@ from collections import OrderedDict
 
 import numpy as np
 
-import pycuda.gpuarray as garray
-from pycuda.tools import dtype_to_ctype
-import pycuda.driver as cuda
-from pycuda.compiler import SourceModule
-
 from neurokernel.LPU.NDComponents.MembraneModels.BaseMembraneModel import BaseMembraneModel
 
 class MorrisLecar(BaseMembraneModel):
