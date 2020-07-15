@@ -77,7 +77,7 @@ class BaseAxonHillockModel(with_metaclass(ABCMeta, NDComponent)):
 
     def get_update_func(self, dtypes):
         type_dict = {k: dtype_to_ctype(dtypes[k]) for k in dtypes}
-        type_dict.update({'fletter': 'f' if type_dict[self.params[0]] == 'float' else ''})
+        type_dict.update({'fletter': 'f' if type_dict['param_{}'.format(self.params[0])] == 'float' else ''})
         mod = SourceModule(self.get_update_template() % type_dict,
                            options=self.compile_options)
         func = mod.get_function("update")
