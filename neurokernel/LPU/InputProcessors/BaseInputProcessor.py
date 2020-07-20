@@ -7,6 +7,7 @@ from pycuda.tools import dtype_to_ctype, context_dependent_memoize
 from pycuda.compiler import SourceModule
 
 import numpy as np
+import networkx as nx
 import h5py
 from datetime import datetime
 
@@ -41,6 +42,10 @@ class BaseInputProcessor(object):
         self.input_file = input_file
         self.input_interval = input_interval
         self.metadata = {}
+        self._additional_graph = nx.MultiDiGraph()
+
+    def get_new_graph(self):
+        return self._additional_graph
 
     def add_variables(self, var_list):
         for var, uids in var_list:

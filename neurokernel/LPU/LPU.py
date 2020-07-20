@@ -671,6 +671,18 @@ class LPU(Module):
         if self._print_timing:
             start = time.time()
 
+        if not isinstance(input_processors, list):
+            input_processors = [input_processors]
+        if not isinstance(output_processors, list):
+            output_processors = [output_processors]
+
+        self.output_processors = output_processors
+        self.input_processors = input_processors
+
+        G = nx.MultiDiGraph()
+        for input_processor in self.input_processors:
+            G = nx.compose(G, input_processor.get_new_graph())
+
         if isinstance(graph_type, dict):
         # for backward compatibility where the two arguments are comp_dict and conn_list
             comp_dict = graph_type
@@ -687,7 +699,6 @@ class LPU(Module):
                     graph = graph_dict['graph']
                 else:
                     raise TypeError("For graph_type = 'obj', graph must be networkx Graphs")
-                comp_dict, conn_list = self.graph_to_dicts(graph, **kwargs)
             elif graph_type == 'gpickle':
                 # use networkx built-in pickle function,
                 # relatively fast but require disk space
@@ -699,7 +710,6 @@ class LPU(Module):
                     graph = nx.read_gpickle(graph_dict['filename'])
                 else:
                     raise TypeError('graph_dict must be either str (filename) or dict')
-                comp_dict, conn_list = self.graph_to_dicts(graph, **kwargs)
             elif graph_type == 'pickle':
                 # use pickled byte stream of networkx.Graph
                 # fast
@@ -711,7 +721,6 @@ class LPU(Module):
                     graph = pickle.loads(graph_dict['stream'])
                 else:
                     raise TypeError('graph_dict must be either pickled byte stream or dict')
-                comp_dict, conn_list = self.graph_to_dicts(graph, **kwargs)
             elif graph_type == 'gexf':
                 # use networkx build-in read_gexf
                 # slow and require disk space
@@ -723,7 +732,6 @@ class LPU(Module):
                     graph = nx.read_gexf(graph_dict['filename'])
                 else:
                     raise TypeError('graph_dict must be either str (filename) or dict')
-                comp_dict, conn_list = self.graph_to_dicts(graph, **kwargs)
             elif graph_type == 'function':
                 # call a function created by functools.partial method,
                 # where the function and arguments
@@ -734,23 +742,15 @@ class LPU(Module):
                 elif isinstance(graph_dict, dict):
                     kwargs = graph_dict.get('kwargs', {})
                     graph = graph_dict['function']()
-                comp_dict, conn_list = self.graph_to_dicts(graph, **kwargs)
             else:
                 raise TypeError('Unkown method to generate Graph')
+            comp_dict, conn_list = self.graph_to_dicts(nx.compose(graph, G), **kwargs)
         else:
             raise TypeError('Unkown method to generate Graph')
 
         if self._print_timing:
             self.log_info("Elapsed time for converting graph: {:.3f} seconds".format(time.time()-start))
             start = time.time()
-
-        if not isinstance(input_processors, list):
-            input_processors = [input_processors]
-        if not isinstance(output_processors, list):
-            output_processors = [output_processors]
-
-        self.output_processors = output_processors
-        self.input_processors = input_processors
 
         self._uid_key = uid_key
 

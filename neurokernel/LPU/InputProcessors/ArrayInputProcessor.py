@@ -74,8 +74,14 @@ class ArrayInputProcessor(BaseInputProcessor):
             }
         }
     """
-    def __init__(self, inputs = {}, mode = 0, cache_length = 1000):
-        super(ArrayInputProcessor, self).__init__([], mode, memory_mode = 'gpu')
+    def __init__(self, inputs = {}, mode = 0, cache_length = 1000,
+                 input_file = None, input_interval = 1,
+                 sensory_file = None, sensory_interval = 1):
+        super(ArrayInputProcessor, self).__init__([], mode, memory_mode = 'gpu',
+                                                  input_file = input_file,
+                                                  input_interval = input_interval,
+                                                  sensory_file = sensory_file,
+                                                  sensory_interval = sensory_interval)
         self.cache_length = cache_length
         self.data = {}
         self.add_inputs(inputs)
