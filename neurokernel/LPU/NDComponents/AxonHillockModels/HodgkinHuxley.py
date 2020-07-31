@@ -58,7 +58,7 @@ __global__ void update(
     for(int i = tid; i < num_comps; i += total_threads)
     {
         spike = 0.0;
-        V = g_Vprev[i];
+        V = g_internalV[i];
         Vprev1 = V;
         Vprev2 = g_Vprev1[i];
         I = g_I[i];
