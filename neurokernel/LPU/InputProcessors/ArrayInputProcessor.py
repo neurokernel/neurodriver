@@ -13,23 +13,23 @@ class ArrayInputProcessor(BaseInputProcessor):
     """
     Parameters
     ----------
-    input: dict
-           A dictionary with the following structure:
-           {var1: {'uids': ['comp1', 'comp2' ... ], 'data': np.ndarray},
-            var2: {'uids': ['comp3', 'comp4' ... ], 'data': np.ndarray},
-            ...}
-           where in each key/value pair, the key specifies the varialbe to be
-           inject input to, value['uids'] is a list that specifies the uids of
-           components to be injected to, and value['data'] is an np.ndarray
-           of shape (T, N) that specifies the input to each of the N components
-           at every time step for a total of T steps, and the ordering the data in
-           each column should be the same as the order in value['uids'].
-           For 'spike_state', in addition to provide 0 (no spike) or 1 (spike)
-           for each time step, spike time and the index of neuron that spiked
-           can be provided by value['data']['time'] and value['data']['index'],
-           respectively. See examples for more details.
+    inputs: dict
+            A dictionary with the following structure:
+            {var1: {'uids': ['comp1', 'comp2' ... ], 'data': np.ndarray},
+             var2: {'uids': ['comp3', 'comp4' ... ], 'data': np.ndarray},
+             ...}
+            where in each key/value pair, the key specifies the varialbe to be
+            inject input to, value['uids'] is a list that specifies the uids of
+            components to be injected to, and value['data'] is an np.ndarray
+            of shape (T, N) that specifies the input to each of the N components
+            at every time step for a total of T steps, and the ordering the data in
+            each column should be the same as the order in value['uids'].
+            For 'spike_state', in addition to provide 0 (no spike) or 1 (spike)
+            for each time step, spike time and the index of neuron that spiked
+            can be provided by value['data']['time'] and value['data']['index'],
+            respectively. See examples for more details.
 
-           The input can also be programmatically loaded by other methods.
+            The input can also be programmatically loaded by other methods.
     mode:     int
               mode in BaseInputProcessor
               0: default, when the file does not cover the entire simulation,
@@ -259,7 +259,7 @@ class ArrayInputProcessor(BaseInputProcessor):
     def is_input_available(self):
         return not self.end_of_input
 
-    def get_input(self, var = None, uids = None):
+    def get_input(self, var = None, uids = None, dt = 1, start_time = 0):
         """
         retrieve inputs by variable name `var` and uids
 
@@ -284,22 +284,23 @@ class ArrayInputProcessor(BaseInputProcessor):
         if var is None and uids is None:
             return self.data
         elif var is not None and uids is None:
-            return self._get_input_by_var(var)
+            return self._get_input_by_var(var, dt = dt, start_time = start_time)
         elif var is None and uids is not None:
-            return self._get_input_by_uids(uids)
+            return self._get_input_by_uids(uids, dt = dt, start_time = start_time)
         else:
-            return self._get_input_by_var_and_uids(var, uids)
+            return self._get_input_by_var_and_uids(var, uids, dt = dt, start_time = start_time)
 
-    def _get_input_by_var(self, var):
+    def _get_input_by_var(self, var, dt = 1, start_time = 0):
         uids = self.variables[var]['uids']
         data = self.data[var]
         if var == 'spike_state' and self.spike_state_format == 'event':
-            input = {uid: data['time'][data['index']==i] for i, uid in enumerate(uids)}
+            input = {uid: {'data': data['time'][data['index']==i]} for i, uid in enumerate(uids)}
         else:
-            input = {uid: data[:,i].copy() for i, uid in enumerate(uids)}
+            t = np.arange(0, data.shape[0])*dt + start_time
+            input = {uid: {'time': t, 'data': data[:,i].copy()} for i, uid in enumerate(uids)}
         return input
 
-    def _get_input_by_uid(self, uid):
+    def _get_input_by_uid(self, uid, dt = 1, start_time = 0):
         input = {}
         for var in self.data:
             try:
@@ -310,18 +311,19 @@ class ArrayInputProcessor(BaseInputProcessor):
                 if var == 'spike_state' and self.spike_state_format == 'event':
                     input[var] = self.data[var]['time'][self.data[var]['index'] == index]
                 else:
-                    input[var] = self.data[var][:,index].copy()
+                    t = np.arange(0, self.data[var].shape[0])*dt + start_time
+                    input[var] = {'time': t, 'data': self.data[var][:,index].copy()}
         return input
 
-    def _get_input_by_uids(self, uids):
+    def _get_input_by_uids(self, uids, dt = 1, start_time = 0):
         if isinstance(uids, str):
-            return {uids: self._get_input_by_uid(uids)}
+            return {uids: self._get_input_by_uid(uids, dt = dt, start_time = start_time)}
         elif isinstance(uids, (list, tuple)):
-            return OrderedDict([(uid, self._get_input_by_uid(uid)) for uid in uids])
+            return OrderedDict([(uid, self._get_input_by_uid(uid, dt = dt, start_time = start_time)) for uid in uids])
         elif isinstance(uids, set):
-            return {uid: self._get_input_by_uid(uid) for uid in uids}
+            return {uid: self._get_input_by_uid(uid, dt = dt, start_time = start_time) for uid in uids}
 
-    def _get_input_by_var_and_uid(self, var, uid):
+    def _get_input_by_var_and_uid(self, var, uid, dt = 1, start_time = 0):
         input = None
         try:
             index = self.variables[var]['uids'].index(uid)
@@ -329,9 +331,10 @@ class ArrayInputProcessor(BaseInputProcessor):
             pass
         else:
             if var == 'spike_state' and self.spike_state_format == 'event':
-                input = self.data[var]['time'][self.data[var]['index'] == index]
+                input = {'data': self.data[var]['time'][self.data[var]['index'] == index]}
             else:
-                input = self.data[var][:,index].copy()
+                t = np.arange(0, self.data[var].shape[0])*dt + start_time
+                input = {'time': t, 'data': self.data[var][:,index].copy()}
         return input
 
     def _get_input_by_var_and_uids(self, var, uids):

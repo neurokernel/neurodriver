@@ -167,9 +167,10 @@ class OutputRecorder(BaseOutputProcessor):
         uids = self.output[var]['uids']
         data = self.output[var]['data']
         if var == 'spike_state':
-            output = {uid: data['time'][data['index']==i] for i, uid in enumerate(uids)}
+            output = {uid: {'data': data['time'][data['index']==i] + self.start_time} for i, uid in enumerate(uids)}
         else:
-            output = {uid: data[:,i].copy() for i, uid in enumerate(uids)}
+            t = np.arange(0, data.shape[0])*self.dt*self.sample_interval + self.start_time
+            output = {uid: {'time': t, 'data': data[:,i].copy()} for i, uid in enumerate(uids)}}
         return output
 
     def _get_output_by_uid(self, uid):
@@ -178,12 +179,13 @@ class OutputRecorder(BaseOutputProcessor):
             try:
                 index = self.output[var]['uids'].index(uid)
             except ValueError:
-                output[var] = []
+                pass
             else:
                 if var == 'spike_state':
-                    output[var] = self.output[var]['data']['time'][self.output[var]['data']['index'] == index]
+                    output[var] = {'data': self.output[var]['data']['time'][self.output[var]['data']['index'] == index] + self.start_time}
                 else:
-                    output[var] = self.output[var]['data'][:,index].copy()
+                    t = np.arange(0, self.output[var]['data'].shape[0])*self.dt*self.sample_interval + self.start_time
+                    output[var] = {'time': t, 'data': self.output[var]['data'][:,index].copy()}
         return output
 
     def _get_output_by_uids(self, uids):
@@ -199,12 +201,13 @@ class OutputRecorder(BaseOutputProcessor):
         try:
             index = self.output[var]['uids'].index(uid)
         except ValueError:
-            return []
+            pass
         else:
             if var == 'spike_state':
-                output = self.output[var]['data']['time'][self.output[var]['data']['index'] == index]
+                output = {'data': self.output[var]['data']['time'][self.output[var]['data']['index'] == index] + self.start_time}
             else:
-                output = self.output[var]['data'][:,index].copy()
+                t = np.arange(0, self.output[var]['data'].shape[0])*self.dt*self.sample_interval + self.start_time
+                output = {'time': t, 'data': self.output[var]['data'][:,index].copy()}
         return output
 
     def _get_output_by_var_and_uids(self, var, uids):
