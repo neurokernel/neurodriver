@@ -170,7 +170,7 @@ class OutputRecorder(BaseOutputProcessor):
             output = {uid: {'data': data['time'][data['index']==i] + self.start_time} for i, uid in enumerate(uids)}
         else:
             t = np.arange(0, data.shape[0])*self.dt*self.sample_interval + self.start_time
-            output = {uid: {'time': t, 'data': data[:,i].copy()} for i, uid in enumerate(uids)}}
+            output = {uid: {'time': t, 'data': data[:,i].copy()} for i, uid in enumerate(uids)}
         return output
 
     def _get_output_by_uid(self, uid):
