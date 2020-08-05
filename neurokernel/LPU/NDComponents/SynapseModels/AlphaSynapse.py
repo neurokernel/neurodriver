@@ -4,8 +4,8 @@ class AlphaSynapse(BaseSynapseModel):
     accesses = ['spike_state'] # (bool)
     updates = ['g'] # conductance (mS/cm^2)
     params = ['gmax', # maximum conductance (mS/cm^2)
-              'ar', # rise rate of conductance (1/s)
-              'ad' # decay rate of conductance (1/s)
+              'ar', # rise rate of conductance (ms^{-1})
+              'ad', # decay rate of conductance (ms^{-1})
               ]
     internals = OrderedDict([('z', 0.0),  # g,
                              ('dz', 0.0),  # derivative of g
@@ -177,9 +177,9 @@ if __name__ == '__main__':
     G.add_node('synapse0', **{
                'class': 'AlphaSynapse',
                'name': 'AlphaSynapse',
-               'gmax': 0.003 * 1e-3,
-               'ar': 110.0,
-               'ad': 190.0,
+               'gmax': 0.003,
+               'ar': 0.11,
+               'ad': 0.19,
                'reverse': 0.0
                })
 
