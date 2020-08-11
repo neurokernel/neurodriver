@@ -50,7 +50,7 @@ __global__ void update(
     %(param_E_Na)s* g_E_Na,
     %(param_E_L)s* g_E_L,
     %(internal_V)s* g_internalV,
-    %(internal_Vprev2)s* g_Vprev1,
+    %(internal_Vprev1)s* g_Vprev1,
     %(internal_n)s* g_n,
     %(internal_m)s* g_m,
     %(internal_h)s* g_h,
