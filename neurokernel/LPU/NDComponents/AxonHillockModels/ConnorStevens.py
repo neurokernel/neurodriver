@@ -131,7 +131,7 @@ __global__ void update(
         g_a[i] = a;
         g_b[i] = b;
         g_V[i] = V;
-        g_internalV = V;
+        g_Vprev[i] = V;
         g_Vprev1[i] = Vprev2;
         g_spike_state[i] = (spike > 0);
     }
