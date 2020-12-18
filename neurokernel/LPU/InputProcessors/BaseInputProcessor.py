@@ -242,7 +242,7 @@ class BaseInputProcessor(object):
                                                               maxshape=(None,len(d['uids'])))
                 else:
                     raise TypeError('variable name must either be a str or a tuple of str')
-                self.record_count = 0
+        self.record_count = 0
 
         self.pre_run()
 

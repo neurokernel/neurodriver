@@ -1,5 +1,6 @@
 
 from collections import OrderedDict
+from datetime import datetime
 
 import h5py
 import numpy as np
@@ -356,6 +357,12 @@ class ArrayInputProcessor(BaseInputProcessor):
                   name of the file to store the results
         """
         with h5py.File(filename, 'w') as h5file:
+            h5file.create_dataset('metadata', (), 'i')
+            h5file['metadata'].attrs['start_time'] = 0.0
+            h5file['metadata'].attrs['sample_interval'] = self.input_interval
+            #h5file['metadata'].attrs['dt'] = self.dt
+            h5file['metadata'].attrs[
+                'DateCreated'] = datetime.now().isoformat()
             for var, d in self.variables.items():
                 if var == 'spike_state' and self.spike_state_format == 'event':
                     h5file.create_dataset(var + '/data/index',
