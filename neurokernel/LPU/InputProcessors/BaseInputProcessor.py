@@ -24,7 +24,7 @@ class BaseInputProcessor(object):
         # for each variable in update_input method with a ndarray of
         # length len(uids) and the correct dtype
         self.variables = {var:{'uids':uids,'input':None}
-                          for var, uids in var_list if uids}
+                          for var, uids in var_list if uids is not None}
         self.epoch = 0
         self.dest_inds = {}
         self._LPU_obj = None
