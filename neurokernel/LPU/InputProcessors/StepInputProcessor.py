@@ -9,20 +9,27 @@ class StepInputProcessor(BaseInputProcessor):
         super(StepInputProcessor, self).__init__([(variable, uids)],
                                                  mode = 1,
                                                  memory_mode = 'gpu')
-        self.val = val
         self.start = start
         self.stop = stop
         self.var = variable
         self.num = len(uids)
         self.started = False
         self.stopped = False
+        
+        if np.isscalar(val):
+            self.val = np.full((self.num,), val)
+        else:
+            assert len(val) == self.num, \
+                f"Step Input specified with {self.num} uids but got input value of length {len(val)}"
+            self.val = val.copy()
+
 
     def update_input(self):
         if self.stopped:
             self.variables[self.var]['input'].fill(0)
         else:
             if self.started:
-                self.variables[self.var]['input'].fill(self.val)
+                self.variables[self.var]['input'].set(self.val)
         # if self.LPU_obj.time == self.start:
         #     self.variables[self.var]['input'].fill(self.val) # * np.ones(self.num, self.dtypes[self.var])
         # else:
