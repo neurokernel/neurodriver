@@ -5,10 +5,16 @@ from .BaseInputProcessor import BaseInputProcessor
 
 class StepInputProcessor(BaseInputProcessor):
 
-    def __init__(self, variable, uids, val, start, stop):
+    def __init__(self, variable, uids, val, start, stop,
+                 input_file = None, input_interval = 1,
+                 sensory_file = None, sensory_interval = 1):
         super(StepInputProcessor, self).__init__([(variable, uids)],
                                                  mode = 1,
-                                                 memory_mode = 'gpu')
+                                                 memory_mode = 'gpu',
+                                                 input_file = input_file,
+                                                 input_interval = input_interval,
+                                                 sensory_file = sensory_file,
+                                                 sensory_interval = sensory_interval)
         self.val = val
         self.start = start
         self.stop = stop
