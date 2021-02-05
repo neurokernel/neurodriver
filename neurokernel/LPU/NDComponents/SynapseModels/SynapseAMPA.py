@@ -1,45 +1,60 @@
-from neurokernel.LPU.NDComponents.SynapseModels.BaseSynapseModel import *
+from collections import OrderedDict
 
-#This class assumes a single pre synaptic connection per component instance
-class PowerGPotGPot(BaseSynapseModel):
-    accesses = ['V']
+
+import numpy as np
+import pycuda.gpuarray as garray
+from pycuda.tools import dtype_to_ctype
+import pycuda.driver as cuda
+from pycuda.compiler import SourceModule
+
+from .BaseSynapseModel import BaseSynapseModel
+
+# assumes a maximum of one input connection per synapse
+class SynapseAMPA(BaseSynapseModel):
+    accesses = ['spike_state']
     updates = ['g']
-    params = ['threshold', 'slope', 'power', 'saturation']
-    extra_params = []
-    internals = OrderedDict([])
+    params = ['gmax', 'st']
+    internals = OrderedDict([('tst', 0.)])
 
     @property
     def maximum_dt_allowed(self):
-        return self.dt
+        return 1e-4
 
     def get_update_template(self):
         template = """
-__global__ void update(int num_comps, %(dt)s dt, int steps,
-                       %(input_V)s* g_V, %(param_threshold)s* g_threshold,
-                       %(param_slope)s* g_slope, %(param_power)s* g_power,
-                       %(param_saturation)s* g_saturation,
-                       %(update_g)s* g_g)
+__global__ void update(int num_comps, %(dt)s dt, int nsteps,
+                       %(input_spike_state)s* g_spike_state,
+                       %(param_gmax)s *g_gmax, %(param_st)s *g_st,
+                       %(internal_tst)s *g_tst,
+                       %(update_g)s *g_g)
 {
-    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    int tid = threadIdx.x + blockIdx.x*blockDim.x;
     int total_threads = gridDim.x * blockDim.x;
 
-    %(dt)s ddt = dt*1000.; // s to ms
-    %(input_V)s V;
-    %(param_threshold)s threshold;
-    %(param_slope)s slope;
-    %(param_power)s power;
-    %(param_saturation)s saturation;
+    %(dt)s ddt = dt*1000.;
+    %(input_spike_state)s spike_state;
+    %(param_st)s st, est;
+    %(internal_tst)s tst;
 
     for(int i = tid; i < num_comps; i += total_threads)
     {
-        V = g_V[i];
-        threshold = g_threshold[i];
-        slope = g_slope[i];
-        power = g_power[i];
-        saturation = g_saturation[i];
+        spike_state = g_spike_state[i];
+        st = g_st[i];
+        tst = g_tst[i];
 
-        g_g[i] = fmin%(fletter)s(saturation,
-                    slope*pow%(fletter)s(fmax(0.0,V-threshold),power));
+        est = exp%(fletter)s(-ddt/st);
+
+        for(int k = 0; k < nsteps; ++k)
+        {
+            tst *= est;
+            if(k == 0 && (spike_state>0.0))
+            {
+                tst += 1;
+            }
+        }
+
+        g_g[i] = tst*g_gmax[i];
+        g_tst[i] = tst;
     }
 }
 """
@@ -55,7 +70,8 @@ if __name__ == '__main__':
 
     from neurokernel.LPU.LPU import LPU
 
-    from neurokernel.LPU.InputProcessors.RampInputProcessor import RampInputProcessor
+    from neurokernel.LPU.InputProcessors.FileInputProcessor import FileInputProcessor
+    from neurokernel.LPU.InputProcessors.StepInputProcessor import StepInputProcessor
     from neurokernel.LPU.OutputProcessors.FileOutputProcessor import FileOutputProcessor
 
     import neurokernel.mpi_relaunch
@@ -88,20 +104,18 @@ if __name__ == '__main__':
 
     G = nx.MultiDiGraph()
 
-    G.add_node('synapse0', **{
-               'class': 'PowerGPotGPot',
-               'name': 'PowerGPotGPot',
-               'gmax': 0.4,
-               'threshold': -55.0,
-               'slope': 0.02,
-               'power': 1.0,
-               'saturation': 0.4,
+    G.add_node('synapse0', {
+               'class': 'SynapseAMPA',
+               'name': 'SynapseAMPA',
+               'gmax': 0.003,#21.788,
+               'st': 20.0,#100.0,
                'reverse': 0.0
                })
 
     comp_dict, conns = LPU.graph_to_dicts(G)
 
-    fl_input_processor = RampInputProcessor('V', ['synapse0'], 0.0, 1.0, -70.0, -30.0)
+    #fl_input_processor = StepInputProcessor('I', ['neuron0'], 1, 0.2, 0.4)
+    fl_input_processor = FileInputProcessor('input_spike.h5')
     fl_output_processor = FileOutputProcessor([('g', None)], 'new_output.h5', sample_interval=1)
 
     man.add(LPU, 'ge', dt, comp_dict, conns,

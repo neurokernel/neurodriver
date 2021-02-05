@@ -19,6 +19,9 @@ class BaseSynapseModel(with_metaclass(ABCMeta, NDComponent)):
 
     accesses = ['V']
     updates = ['g']
+    params = []
+    extra_params = []
+    internals = []
 
     def __init__(self, params_dict, access_buffers, dt,
                  LPU_id=None, debug=False, cuda_verbose=False):
@@ -32,8 +35,8 @@ class BaseSynapseModel(with_metaclass(ABCMeta, NDComponent)):
         self.dtype = params_dict[self.params[0]].dtype
         self.LPU_id = LPU_id
         self.dt = np.double(dt)
-        self.ddt = np.double(1e-6)
-        self.steps = np.int32(max( int(self.dt/self.ddt), 1 ))
+        #self.ddt = np.double(1e-6)
+        #self.steps = np.int32(max( int(self.dt/self.ddt), 1 ))
 
         self.params_dict = params_dict
         self.access_buffers = access_buffers
@@ -53,10 +56,10 @@ class BaseSynapseModel(with_metaclass(ABCMeta, NDComponent)):
                     k, dtype = self.access_buffers[k].dtype)
 
         dtypes = {'dt': self.dtype}
-        dtypes.update({k: self.inputs[k].dtype for k in self.accesses})
-        dtypes.update({k: self.params_dict[k].dtype for k in self.params})
-        dtypes.update({k: self.internal_states[k].dtype for k in self.internals})
-        dtypes.update({k: self.dtype for k in self.updates})
+        dtypes.update({'input_{}'.format(k): self.inputs[k].dtype for k in self.accesses})
+        dtypes.update({'param_{}'.format(k): self.params_dict[k].dtype for k in self.params})
+        dtypes.update({'internal_{}'.format(k): self.internal_states[k].dtype for k in self.internals})
+        dtypes.update({'update_{}'.format(k): self.dtype for k in self.updates})
         self.update_func = self.get_update_func(dtypes)
 
     def retrieve_buffer(self, param, st = None):
@@ -111,8 +114,6 @@ __global__ void retrieve(%(type)s* buffer, int buffer_ld, int current,
                          (self.num_comps-1) // 256 + 1), 1)
         return func
 
-
-
     def run_step(self, update_pointers, st = None):
         # retrieve all buffers into a linear array
         for k in self.inputs:
@@ -120,7 +121,7 @@ __global__ void retrieve(%(type)s* buffer, int buffer_ld, int current,
 
         self.update_func.prepared_async_call(
             self.update_func.grid, self.update_func.block, st,
-            self.num_comps, self.ddt, self.steps,
+            self.num_comps, self.internal_dt, self.internal_steps,
             *[self.inputs[k].gpudata for k in self.accesses]+\
             [self.params_dict[k].gpudata for k in self.params]+\
             [self.internal_states[k].gpudata for k in self.internals]+\
@@ -128,7 +129,7 @@ __global__ void retrieve(%(type)s* buffer, int buffer_ld, int current,
 
     def get_update_func(self, dtypes):
         type_dict = {k: dtype_to_ctype(dtypes[k]) for k in dtypes}
-        type_dict.update({'fletter': 'f' if type_dict[self.params[0]] == 'float' else ''})
+        type_dict.update({'fletter': 'f' if type_dict['param_{}'.format(self.params[0])] == 'float' else ''})
         mod = SourceModule(self.get_update_template() % type_dict,
                            options=self.compile_options)
         func = mod.get_function("update")

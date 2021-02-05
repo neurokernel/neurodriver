@@ -4,37 +4,42 @@ class AlphaSynapse(BaseSynapseModel):
     accesses = ['spike_state'] # (bool)
     updates = ['g'] # conductance (mS/cm^2)
     params = ['gmax', # maximum conductance (mS/cm^2)
-              'ar', # rise rate of conductance (ms)
-              'ad' # decay rate of conductance (ms)
+              'ar', # rise rate of conductance (ms^{-1})
+              'ad', # decay rate of conductance (ms^{-1})
               ]
     internals = OrderedDict([('z', 0.0),  # g,
                              ('dz', 0.0),  # derivative of g
                              ('d2z', 0.0)  # second derivative of g
                              ])
+
+    @property
+    def maximum_dt_allowed(self):
+        return 1e-4
+
     def get_update_template(self):
         # The following kernel assumes a maximum of one input connection
         # per neuron
-        if self.steps == 1:
+        if self.internal_steps == 1:
             # this is a kernel that runs 1 step internally for each self.dt
             template = """
 __global__ void update(int num_comps, %(dt)s dt, int nsteps,
-                       %(spike_state)s* g_spike_state,
-                       %(gmax)s* g_gmax, %(ar)s* g_ar,
-                       %(ad)s* g_ad,
-                       %(z)s* g_z, %(dz)s* g_dz,
-                       %(d2z)s* g_d2z, %(g)s* g_g)
+                       %(input_spike_state)s* g_spike_state,
+                       %(param_gmax)s* g_gmax, %(param_ar)s* g_ar,
+                       %(param_ad)s* g_ad,
+                       %(internal_z)s* g_z, %(internal_dz)s* g_dz,
+                       %(internal_d2z)s* g_d2z, %(update_g)s* g_g)
 {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int total_threads = gridDim.x * blockDim.x;
 
     %(dt)s ddt = dt*1000.; // s to ms
-    %(spike_state)s spike_state;
-    %(gmax)s gmax;
-    %(ar)s ar;
-    %(ad)s ad;
-    %(z)s z, new_z;
-    %(dz)s dz, new_dz;
-    %(d2z)s d2z, new_d2z;
+    %(input_spike_state)s spike_state;
+    %(param_gmax)s gmax;
+    %(param_ar)s ar;
+    %(param_ad)s ad;
+    %(internal_z)s z, new_z;
+    %(internal_dz)s dz, new_dz;
+    %(internal_d2z)s d2z, new_d2z;
 
     for(int i = tid; i < num_comps; i += total_threads)
     {
@@ -64,23 +69,23 @@ __global__ void update(int num_comps, %(dt)s dt, int nsteps,
             # see the "k" for loop
             template = """
 __global__ void update(int num_comps, %(dt)s dt, int nsteps,
-                       %(spike_state)s* g_spike_state,
-                       %(gmax)s* g_gmax, %(ar)s* g_ar,
-                       %(ad)s* g_ad,
-                       %(z)s* g_z, %(dz)s* g_dz,
-                       %(d2z)s* g_d2z, %(g)s* g_g)
+                       %(input_spike_state)s* g_spike_state,
+                       %(param_gmax)s* g_gmax, %(param_ar)s* g_ar,
+                       %(param_ad)s* g_ad,
+                       %(internal_z)s* g_z, %(internal_dz)s* g_dz,
+                       %(internal_d2z)s* g_d2z, %(update_g)s* g_g)
 {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int total_threads = gridDim.x * blockDim.x;
 
     %(dt)s ddt = dt*1000.; // s to ms
-    %(spike_state)s spike_state;
-    %(gmax)s gmax;
-    %(ar)s ar;
-    %(ad)s ad;
-    %(z)s z, new_z;
-    %(dz)s dz, new_dz;
-    %(d2z)s d2z, new_d2z;
+    %(input_spike_state)s spike_state;
+    %(param_gmax)s gmax;
+    %(param_ar)s ar;
+    %(param_ad)s ad;
+    %(internal_z)s z, new_z;
+    %(internal_dz)s dz, new_dz;
+    %(internal_d2z)s d2z, new_d2z;
 
     for(int i = tid; i < num_comps; i += total_threads)
     {
@@ -172,9 +177,9 @@ if __name__ == '__main__':
     G.add_node('synapse0', **{
                'class': 'AlphaSynapse',
                'name': 'AlphaSynapse',
-               'gmax': 0.003 * 1e-3,
-               'ar': 110.0,
-               'ad': 190.0,
+               'gmax': 0.003,
+               'ar': 0.11,
+               'ad': 0.19,
                'reverse': 0.0
                })
 

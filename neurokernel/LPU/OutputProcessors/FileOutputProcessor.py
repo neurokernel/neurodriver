@@ -1,3 +1,7 @@
+
+
+from collections import OrderedDict
+
 import numpy as np
 import h5py
 from datetime import datetime
@@ -145,14 +149,141 @@ class FileOutputProcessor(BaseOutputProcessor):
         if self.scount > 0:
             var = 'spike_state'
             t, index = np.where(self.cache[var].get()[:self.scount,:]!=0)
-            t *= self.sim_dt
+            t = t * self.sim_dt
             nspikes = index.size
             if nspikes:
                 self.h5file[var+'/data/time'].resize(
-                        (self.h5file[var + '/data'].shape[0] + nspikes,))
+                        (self.h5file[var + '/data/time'].shape[0] + nspikes,))
                 self.h5file[var+'/data/index'].resize(
-                        (self.h5file[var + '/data'].shape[0] + nspikes,))
+                        (self.h5file[var + '/data/index'].shape[0] + nspikes,))
                 self.h5file[var + '/data/time'][-nspikes:] = t+self.stime_shift
                 self.h5file[var + '/data/index'][-nspikes:] = index.astype(np.int32)
         self.h5file.flush()
         self.h5file.close()
+
+
+class FileOutputReader(object):
+    def __init__(self, filename):
+        output = {}
+        with h5py.File(filename, 'r') as f:
+            self.metadata = {'start_time': f['metadata'].attrs['start_time'],
+                             'sample_interval': f['metadata'].attrs['sample_interval'],
+                             'dt': f['metadata'].attrs['dt'],
+                             'DateCreated': f['metadata'].attrs['DateCreated']}
+            self.start_time = self.metadata['start_time']
+            self.sample_interval = self.metadata['sample_interval']
+            self.dt = self.metadata['dt']
+            self.DateCreated = self.metadata['DateCreated']
+
+            for var in f:
+                if var != 'metadata':
+                    if var == 'spike_state':
+                        output[var] = {'uids': [n.decode() for n in f[var]['uids'][:]],
+                                       'data': {'time': f[var]['data']['time'][:],
+                                                'index': f[var]['data']['index'][:]}
+                                      }
+                    else:
+                        output[var] = {'uids': [n.decode() for n in f[var]['uids'][:]],
+                                       'data': f[var]['data'][:]}
+        self.output = output
+
+    def get_metadata(self):
+        return self.metadata
+
+    def get_uids(self, var = None):
+        uids = {}
+        if var is None:
+            for variable in self.output:
+                if variable != 'metadata':
+                    uids[variable] = self._get_uid_by_var(variable)
+        else:
+            return self._get_uid_by_var(var)
+
+    def _get_uids_by_var(self, var):
+        return self.output[var]['uids']
+
+    def get_output(self, var = None, uids = None):
+        """
+        retrieve outputs by variable name and uids
+
+        Parameters
+        ----------
+        var: str
+             Name of the variable to retrieve.
+             If None, all variables associated with a uid will be retrieved.
+        uids: str or list of str
+              uids of the component to retrieve
+              If not specified (None), all uids associated with the `var`
+              will be retrieved.
+
+        Returns
+        -------
+        output: dict or OrderedDict
+                If uids is a list or tuple, returns a OrderedDict, Otherwise a dict,
+                with output keyed by uid, and values are either the data/spike_times
+                of the component, or a dict keyed by variable name and data/spike_times
+                in the value.
+        """
+        if var is None and uids is None:
+            return self.output
+        elif var is not None and uids is None:
+            return self._get_output_by_var(var)
+        elif var is None and uids is not None:
+            return self._get_output_by_uids(uids)
+        else:
+            return self._get_output_by_var_and_uids(var, uids)
+
+    def _get_output_by_var(self, var):
+        uids = self.output[var]['uids']
+        data = self.output[var]['data']
+        if var == 'spike_state':
+            output = {uid: {'data': data['time'][data['index']==i] + self.start_time} for i, uid in enumerate(uids)}
+        else:
+            t = np.arange(0, data.shape[0])*self.dt*self.sample_interval + self.start_time
+            output = {uid: {'time': t, 'data': data[:,i].copy()} for i, uid in enumerate(uids)}
+        return output
+
+    def _get_output_by_uid(self, uid):
+        output = {}
+        for var in self.output:
+            try:
+                index = self.output[var]['uids'].index(uid)
+            except ValueError:
+                pass
+            else:
+                if var == 'spike_state':
+                    output[var] = {'data': self.output[var]['data']['time'][self.output[var]['data']['index'] == index] + self.start_time}
+                else:
+                    t = np.arange(0, self.output[var]['data'].shape[0])*self.dt*self.sample_interval + self.start_time
+                    output[var] = {'time': t, 'data': self.output[var]['data'][:,index].copy()}
+        return output
+
+    def _get_output_by_uids(self, uids):
+        if isinstance(uids, str):
+            return {uids: self._get_output_by_uid(uids)}
+        elif isinstance(uids, (list, tuple)):
+            return OrderedDict([(uid, self._get_output_by_uid(uid)) for uid in uids])
+        elif isinstance(uids, set):
+            return {uid: self._get_output_by_uid(uid) for uid in uids}
+
+    def _get_output_by_var_and_uid(self, var, uid):
+        output = None
+        try:
+            index = self.output[var]['uids'].index(uid)
+        except ValueError:
+            pass
+        else:
+            if var == 'spike_state':
+                output = {'data': self.output[var]['data']['time'][self.output[var]['data']['index'] == index] + self.start_time}
+            else:
+                t = np.arange(0, self.output[var]['data'].shape[0])*self.dt*self.sample_interval + self.start_time
+                output = {'time': t, 'data': self.output[var]['data'][:,index].copy()}
+        return output
+
+    def _get_output_by_var_and_uids(self, var, uids):
+        if isinstance(uids, str):
+            return {uids: self._get_output_by_var_and_uid(var, uids)}
+        elif isinstance(uids, (list, tuple)):
+            return OrderedDict([(uid, self._get_output_by_var_and_uid(var, uid)) for uid in uids])
+        elif isinstance(uids, set):
+            return {uid: self._get_output_by_var_and_uid(var, uid) for uid in uids}

@@ -1,4 +1,5 @@
 
+import sys
 import time
 import argparse
 import itertools
@@ -9,6 +10,7 @@ import networkx as nx
 import numpy as np
 from neurokernel.tools.logging import setup_logger
 import neurokernel.core_gpu as core
+from neurokernel.tools.misc import LPUExecutionError
 
 from neurokernel.LPU.LPU import LPU
 
@@ -39,7 +41,7 @@ if args.log.lower() in ['file', 'both']:
 if args.log.lower() in ['screen', 'both']:
     screen = True
 logger = setup_logger(file_name=file_name, screen=screen)
-
+print('Logging in file {}'.format(file_name))
 
 def create_graph(N):
     G = nx.MultiDiGraph()
@@ -63,13 +65,45 @@ def create_graph(N):
                     'initm': np.random.rand(),
                     'inith': 0.89-1.1*n
                     })
+
+    spk_out_id = 0
+    in_port_idx = 0
+
+    excitatory = (np.random.rand(N)>0.5)
+
+    # Create AlphaSynapse connection between each pair of HodgkinHuxley neurons
+    for i in range(N):
+        for j in range(N):
+            if i == j:
+                continue
+
+            id_i = 'neuron_{}'.format(i)
+            id_j = 'neuron_{}'.format(j)
+            pair_id = id_i + '_to_' + id_j
+
+            synapse_id = 'synapse_' + pair_id
+
+            G.add_node(synapse_id,
+                    **{'class': 'AlphaSynapse',
+                        'name': pair_id,
+                        'ar': 0.11,
+                        'ad': 0.19,
+                        'reverse': 0.0 if excitatory[i] else -80.0,
+                        'gmax': 0.05,
+                        'g': 0.0,
+                        'E': 0.0,
+                        'circuit': 'local'})
+
+            G.add_edge(id_i, synapse_id)
+            G.add_edge(synapse_id, id_j)
     return G
+
 
 def simulation(dt, N, output_n, nsteps = 10000):
     start_time = time.time()
 
-    dur = nsteps * dt
     steps = nsteps
+    dur = nsteps * dt
 
     man = core.Manager()
 
@@ -80,9 +114,8 @@ def simulation(dt, N, output_n, nsteps = 10000):
     #comp_dict, conns = LPU.graph_to_dicts(G, remove_edge_id=False)
 
     fl_input_processor = StepInputProcessor('I', ['neuron_{}'.format(i) for i in range(N)], 20.0, 0.0, dur)
-    fl_output_processor = [FileOutputProcessor([('V', None), ('spike_state', None)],
-                                               'neurodriver_output_{}.h5'.format(output_n),
-                                               sample_interval=1, cache_length=2000)]
+    fl_output_processor = [FileOutputProcessor([('V', None), ('spike_state', None), ('g', None)],
+                                               'neurodriver_output_{}.h5'.format(output_n), sample_interval=1, cache_length=2000)]
     #fl_output_processor = [] # temporarily suppress generating output
 
     #fl_output_processor = [OutputRecorder([('spike_state', None), ('V', None), ('g', None), ('E', None)], dur, dt, sample_interval = 1)]
@@ -100,7 +133,10 @@ def simulation(dt, N, output_n, nsteps = 10000):
     man.start(steps=steps)
     print("Spawning LPUs Completed in {} seconds.".format(time.time()-start_time))
     start_time = time.time()
-    execution_time = man.wait(return_timing = True)
+    try:
+        execution_time = man.timed_wait()
+    except LPUExecutionError:
+        sys.exit(1)
     compile_and_execute_time = time.time()-start_time
     print("LPUs Compilation and Execution Completed in {} seconds.".format(compile_and_execute_time))
     return compile_and_execute_time, execution_time
@@ -108,6 +144,9 @@ def simulation(dt, N, output_n, nsteps = 10000):
 if __name__ == '__main__':
     sim_time = []
     compile_and_sim_time = []
+
+    #diff_dt = [5e-6, 1e-5, 5e-5, 1e-4, 1e-3]
+    #diff_N = [2, 32, 128, 256, 512]
 
     # comparison 1:
     diff_dt = [1e-6] # run at the internal dt used by HH2.
@@ -126,7 +165,7 @@ if __name__ == '__main__':
             sim_time.append([])
             compile_and_sim_time.append([])
             for t in range(n_sim + 1):
-                c, s = simulation(dt, N, i * n_sim + t, 10000)
+                c, s = simulation(dt, N, i * n_sim + t, nsteps = 10000)
                 sim_time[i].append(s)
                 compile_and_sim_time[i].append(c)
             sim_time[i].pop(0) # discard first result

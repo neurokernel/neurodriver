@@ -12,12 +12,25 @@ class HodgkinHuxley2(BaseAxonHillockModel):
               'E_Na',
               'E_L'
               ]
-    internals = OrderedDict([('internalV',-65.),       # Membrane Potential (mV)
-                             ('internalVprev1',-65.),  # Membrane Potential (mV)
-                             ('internalVprev2',-65.),
+    extra_params = ['initV',
+                    'initn',
+                    'initm',
+                    'inith']
+    internals = OrderedDict([('V',-65.),  # Membrane Potential (mV)
+                             ('Vprev1',-65.),
                              ('n', 0.),
                              ('m', 0.),
                              ('h', 0.92)]) # Membrane Potential (mV)
+    @property
+    def maximum_dt_allowed(self):
+        return 1e-5
+
+    def pre_run(self, update_pointers):
+        super(HodgkinHuxley2, self).pre_run(update_pointers)
+        self.add_initializer('initV', 'Vprev1', update_pointers)
+        self.add_initializer('initn', 'n', update_pointers)
+        self.add_initializer('initm', 'm', update_pointers)
+        self.add_initializer('inith', 'h', update_pointers)
 
     def get_update_template(self):
         template = """
@@ -29,49 +42,48 @@ __global__ void update(
     int num_comps,
     %(dt)s dt,
     int nsteps,
-    %(I)s* g_I,
-    %(g_K)s* g_g_K,
-    %(g_Na)s* g_g_Na,
-    %(g_L)s* g_g_L,
-    %(E_K)s* g_E_K,
-    %(E_Na)s* g_E_Na,
-    %(E_L)s* g_E_L,
-    %(internalV)s* g_internalV,
-    %(internalVprev1)s* g_internalVprev1,
-    %(internalVprev2)s* g_internalVprev2,
-    %(n)s* g_n,
-    %(m)s* g_m,
-    %(h)s* g_h,
-    %(spike_state)s* g_spike_state,
-    %(V)s* g_V)
+    %(input_I)s* g_I,
+    %(param_g_K)s* g_g_K,
+    %(param_g_Na)s* g_g_Na,
+    %(param_g_L)s* g_g_L,
+    %(param_E_K)s* g_E_K,
+    %(param_E_Na)s* g_E_Na,
+    %(param_E_L)s* g_E_L,
+    %(internal_V)s* g_internalV,
+    %(internal_Vprev1)s* g_Vprev1,
+    %(internal_n)s* g_n,
+    %(internal_m)s* g_m,
+    %(internal_h)s* g_h,
+    %(update_spike_state)s* g_spike_state,
+    %(update_V)s* g_V)
 {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int total_threads = gridDim.x * blockDim.x;
 
     %(dt)s ddt = dt*1000.; // s to ms
 
-    %(V)s V, Vprev1, Vprev2, dV;
-    %(I)s I;
-    %(spike_state)s spike;
-    %(g_Na)s g_Na;
-    %(g_K)s g_K;
-    %(g_L)s g_L;
+    %(update_V)s V, Vprev1, Vprev2, dV;
+    %(input_I)s I;
+    %(update_spike_state)s spike;
+    %(param_g_Na)s g_Na;
+    %(param_g_K)s g_K;
+    %(param_g_L)s g_L;
 
-    %(E_Na)s E_Na;
-    %(E_K)s E_K;
-    %(E_L)s E_L;
+    %(param_E_Na)s E_Na;
+    %(param_E_K)s E_K;
+    %(param_E_L)s E_L;
 
-    %(n)s n, dn;
-    %(m)s m, dm;
-    %(h)s h, dh;
-    %(n)s a;
+    %(internal_n)s n, dn;
+    %(internal_m)s m, dm;
+    %(internal_h)s h, dh;
+    %(internal_n)s a;
 
     for(int i = tid; i < num_comps; i += total_threads)
     {
         spike = 0;
         V = g_internalV[i];
-        Vprev1 = g_internalVprev1[i];
-        Vprev2 = g_internalVprev2[i];
+        Vprev1 = V;
+        Vprev2 = g_Vprev1[i];
         I = g_I[i];
         n = g_n[i];
         m = g_m[i];
@@ -116,9 +128,8 @@ __global__ void update(
         g_m[i] = m;
         g_h[i] = h;
         g_V[i] = V;
-        g_internalV[i] = V;
-        g_internalVprev1[i] = Vprev1;
-        g_internalVprev2[i] = Vprev2;
+        g_internalV[i] = Vprev1;
+        g_Vprev1[i] = Vprev2;
         g_spike_state[i] = (spike > 0);
     }
 }
@@ -170,11 +181,14 @@ if __name__ == '__main__':
     G = nx.MultiDiGraph()
 
     G.add_node('neuron0', **{
-               'class': 'HodgkinHuxley',
-               'name': 'HodgkinHuxley',
-               'n': 0.,
-               'm': 0.,
-               'h': 1.,
+               'class': 'HodgkinHuxley2',
+               'name': 'HodgkinHuxley2',
+               'g_K': 36.0,
+               'g_Na': 120.0,
+               'g_L': 0.3,
+               'E_K': -77.0,
+               'E_Na': 50.0,
+               'E_L': -54.387,
                })
 
     comp_dict, conns = LPU.graph_to_dicts(G)

@@ -20,6 +20,10 @@ class BaseAxonHillockModel(with_metaclass(ABCMeta, NDComponent)):
 
     accesses = ['I']
     updates = ['spike_state','V']
+    extra_params = []
+    params = []
+    internals = OrderedDict([('V', -65.)])
+
     def __init__(self, params_dict, access_buffers, dt,
                  debug=False, LPU_id=None, cuda_verbose=True):
         if cuda_verbose:
@@ -36,8 +40,6 @@ class BaseAxonHillockModel(with_metaclass(ABCMeta, NDComponent)):
         self.dtype = params_dict[self.params[0]].dtype
 
         self.dt = np.double(dt)
-        self.ddt = np.double(1e-6)
-        self.steps = np.int32(max( int(self.dt/self.ddt), 1 ))
 
         self.internal_states = {
             c: garray.zeros(self.num_comps, dtype = self.dtype)+self.internals[c] \
@@ -48,21 +50,14 @@ class BaseAxonHillockModel(with_metaclass(ABCMeta, NDComponent)):
             for k in self.accesses}
 
         dtypes = {'dt': self.dtype}
-        dtypes.update({k: self.inputs[k].dtype for k in self.accesses})
-        dtypes.update({k: self.params_dict[k].dtype for k in self.params})
-        dtypes.update({k: self.internal_states[k].dtype for k in self.internals})
-        dtypes.update({k: self.dtype for k in self.updates})
+        dtypes.update({'input_{}'.format(k): self.inputs[k].dtype for k in self.accesses})
+        dtypes.update({'param_{}'.format(k): self.params_dict[k].dtype for k in self.params})
+        dtypes.update({'internal_{}'.format(k): self.internal_states[k].dtype for k in self.internals})
+        dtypes.update({'update_{}'.format(k): self.dtype for k in self.updates})
         self.update_func = self.get_update_func(dtypes)
 
     def pre_run(self, update_pointers):
-        if 'initV' in self.params_dict:
-            cuda.memcpy_dtod(int(update_pointers['V']),
-                             self.params_dict['initV'].gpudata,
-                             self.params_dict['initV'].nbytes)
-            cuda.memcpy_dtod(self.internal_states['internalV'].gpudata,
-                             self.params_dict['initV'].gpudata,
-                             self.params_dict['initV'].nbytes)
-
+        self.add_initializer('initV', 'V', update_pointers)
 
     def run_step(self, update_pointers, st=None):
         for k in self.inputs:
@@ -70,7 +65,7 @@ class BaseAxonHillockModel(with_metaclass(ABCMeta, NDComponent)):
 
         self.update_func.prepared_async_call(
             self.update_func.grid, self.update_func.block, st,
-            self.num_comps, self.ddt, self.steps,
+            self.num_comps, self.internal_dt, self.internal_steps,
             *[self.inputs[k].gpudata for k in self.accesses]+\
             [self.params_dict[k].gpudata for k in self.params]+\
             [self.internal_states[k].gpudata for k in self.internals]+\
@@ -82,7 +77,7 @@ class BaseAxonHillockModel(with_metaclass(ABCMeta, NDComponent)):
 
     def get_update_func(self, dtypes):
         type_dict = {k: dtype_to_ctype(dtypes[k]) for k in dtypes}
-        type_dict.update({'fletter': 'f' if type_dict[self.params[0]] == 'float' else ''})
+        type_dict.update({'fletter': 'f' if type_dict['param_{}'.format(self.params[0])] == 'float' else ''})
         mod = SourceModule(self.get_update_template() % type_dict,
                            options=self.compile_options)
         func = mod.get_function("update")
@@ -91,14 +86,3 @@ class BaseAxonHillockModel(with_metaclass(ABCMeta, NDComponent)):
         func.grid = (min(6 * cuda.Context.get_device().MULTIPROCESSOR_COUNT,
                          (self.num_comps-1) // 128 + 1), 1)
         return func
-
-    def add_initializer(self, var_a, var_b, update_pointers):
-        if var_a in self.params_dict:
-            if var_b in self.internal_states:
-                cuda.memcpy_dtod(self.internal_states[var_b].gpudata,
-                                    self.params_dict[var_a].gpudata,
-                                    self.params_dict[var_a].nbytes)
-            if var_b in update_pointers:
-                cuda.memcpy_dtod(int(update_pointers[var_b]),
-                                    self.params_dict[var_a].gpudata,
-                                    self.params_dict[var_a].nbytes)
