@@ -1194,7 +1194,7 @@ class LPU(Module):
         for model in comp_dict:
             if model == 'Input':
                 print('{}: Number of {}: {}'.format(self.id, model, {k: len(v[self._uid_key]) for k, v in comp_dict[model].items()}))
-                self.log_info('Number of {}: {}'.format(model, {k: len(v[self._uid_key]) for k, v in comp_dict[model].items()}.__repr__))
+                self.log_info('Number of {}: {}'.format(model, {k: len(v[self._uid_key]) for k, v in comp_dict[model].items()}.__repr__().replace('{','').replace('}','')))
             else:
                 print('{}: Number of {}: {}'.format(self.id, model, len(comp_dict[model][self._uid_key])))
                 self.log_info('Number of {}: {}'.format(model, len(comp_dict[model][self._uid_key])))

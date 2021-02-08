@@ -65,7 +65,7 @@ def create_graph(N):
                     })
     return G
 
-def simulation(dt, N, output_n, nsteps = 10000):
+def simulation(dt, N, output_n, nsteps = 10000, output = None):
     start_time = time.time()
 
     dur = nsteps * dt
@@ -80,12 +80,16 @@ def simulation(dt, N, output_n, nsteps = 10000):
     #comp_dict, conns = LPU.graph_to_dicts(G, remove_edge_id=False)
 
     fl_input_processor = StepInputProcessor('I', ['neuron_{}'.format(i) for i in range(N)], 20.0, 0.0, dur)
-    fl_output_processor = [FileOutputProcessor([('V', None), ('spike_state', None)],
-                                               'neurodriver_output_{}.h5'.format(output_n),
-                                               sample_interval=1, cache_length=2000)]
-    #fl_output_processor = [] # temporarily suppress generating output
-
-    #fl_output_processor = [OutputRecorder([('spike_state', None), ('V', None), ('g', None), ('E', None)], dur, dt, sample_interval = 1)]
+    fl_output_processor = []
+    if output == 'disk':
+        fl_output_processor.append(
+            FileOutputProcessor([('V', None), ('spike_state', None)],
+                                'neurodriver_output_{}.h5'.format(output_n),
+                                sample_interval=1, cache_length=2000)])                       
+    elif output == 'memory':
+        fl_output_processor.append(
+            OutputRecorder([('spike_state', None), ('V', None)],
+                           sample_interval = 1)])
 
     man.add(LPU, 'ge', dt, 'pickle', pickle.dumps(G),
             device=args.gpu_dev, input_processors=[fl_input_processor],
@@ -100,7 +104,10 @@ def simulation(dt, N, output_n, nsteps = 10000):
     man.start(steps=steps)
     print("Spawning LPUs Completed in {} seconds.".format(time.time()-start_time))
     start_time = time.time()
-    execution_time = man.wait(return_timing = True)
+    try:
+        execution_time = man.timed_wait()
+    except LPUExecutionError:
+        sys.exit(1)
     compile_and_execute_time = time.time()-start_time
     print("LPUs Compilation and Execution Completed in {} seconds.".format(compile_and_execute_time))
     return compile_and_execute_time, execution_time
@@ -122,11 +129,11 @@ if __name__ == '__main__':
     n_sim = 1
     i = 0
     for dt in diff_dt:
+        sim_time.append([])
+        compile_and_sim_time.append([])
         for N in diff_N:
-            sim_time.append([])
-            compile_and_sim_time.append([])
             for t in range(n_sim + 1):
-                c, s = simulation(dt, N, i * n_sim + t, 10000)
+                c, s = simulation(dt, N, i * n_sim + t, 10000, output = 'memory')
                 sim_time[i].append(s)
                 compile_and_sim_time[i].append(c)
             sim_time[i].pop(0) # discard first result

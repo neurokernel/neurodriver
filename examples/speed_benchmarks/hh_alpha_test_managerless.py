@@ -123,9 +123,10 @@ def simulation(dt, N, output_n):
             print_timing=False, time_sync=False,
             extra_comps=[])
     print("Instantiating LPU completed in {} seconds.".format(time.time()-start_time))
-    start_time = time.time()
+    start_time1 = time.time()
     # LPU.run includes pre_run, run_steps and post_run
     lpu.run(steps = steps)
+    execution_time = time.time()-start_time1
     compile_and_execute_time = time.time()-start_time
     print("LPUs Compilation and Execution Completed in {} seconds.".format(compile_and_execute_time))
     return compile_and_execute_time, execution_time
@@ -141,9 +142,9 @@ if __name__ == '__main__':
     n_sim = 1
     i = 0
     for dt in diff_dt:
+        sim_time.append([])
+        compile_and_sim_time.append([])
         for N in diff_N:
-            sim_time.append([])
-            compile_and_sim_time.append([])
             for t in range(n_sim + 1):
                 c, s = simulation(dt, N, i * n_sim + t)
                 sim_time[i].append(s)

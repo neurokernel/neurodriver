@@ -3,6 +3,7 @@ import time
 import argparse
 import itertools
 import networkx as nx
+import pickle
 import pycuda.driver as cuda
 from neurokernel.tools.logging import setup_logger
 import neurokernel.core_gpu as core
@@ -42,6 +43,7 @@ logger = setup_logger(file_name=file_name, screen=screen)
 
 man = core.Manager()
 
+start_time = time.time()
 G = nx.MultiDiGraph()
 
 N = 1024
@@ -55,24 +57,29 @@ for i in range(N):
               'capacitance': 1, # (\mu F/cm^2)
               'resistance': 0.007 # (k\Omega cm.^2)
                })
-
-comp_dict, conns = LPU.graph_to_dicts(G)
-
+print("Creating graph completed in {} seconds.".format(time.time()-start_time))
 
 fl_input_processor = StepInputProcessor('I', ['neuron{}'.format(i) for i in range(N)], 20.0, 0.0, dur)
-fl_output_processor = [FileOutputProcessor([('spike_state', None), ('V', None)], 'output.h5', sample_interval=1)]
+# Write result to disk
+#fl_output_processor = [FileOutputProcessor([('spike_state', None), ('V', None)], 'output.h5', sample_interval=1)]
 
-#fl_output_processor = [OutputRecorder([('spike_state', None), ('V', None)], dur, dt, sample_interval = 1)]
+# Result in memory
+fl_output_processor = [OutputRecorder([('spike_state', None), ('V', None)], sample_interval = 1)]
 
-man.add(LPU, 'ge', dt, comp_dict, conns,
+
+man.add(LPU, 'ge', dt, 'pickle', pickle.dumps(G),
         device=args.gpu_dev, input_processors=[fl_input_processor],
         output_processors=fl_output_processor, debug=args.debug,
-        time_sync = False, print_timing = True,
+        time_sync = False, print_timing = False,
         extra_comps=[])
+print("Adding LPU completed in {} seconds.".format(time.time()-start_time))
 
+start_time = time.time()
 man.spawn()
 man.start(steps=args.steps)
-start_time = time.time()
-man.wait()
-end_time = time.time()
-print(end_time-start_time)
+print("Spawning LPUs Completed in {} seconds.".format(time.time()-start_time))
+execution_time = man.timed_wait()
+compile_and_execution_time = time.time()-start_time
+print("LPU Execution Completed in {} seconds.".format(execution_time))
+print("LPUs Compilation and Execution Completed in {} seconds.".format(compile_and_execution_time))
+
