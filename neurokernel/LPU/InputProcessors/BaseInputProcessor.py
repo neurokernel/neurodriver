@@ -180,7 +180,7 @@ class BaseInputProcessor(object):
             self.input_file_handle['metadata'].attrs['dt'] = self.dt
             self.input_file_handle['metadata'].attrs['sample_interval'] = self.input_interval
             self.input_file_handle['metadata'].attrs['DateCreated'] = datetime.now().isoformat()
-            for k, v in self.metadata:
+            for k, v in self.metadata.items():
                 self.input_file_handle['metadata'].attrs[k] = v
 
         for var, d in self.variables.items():
