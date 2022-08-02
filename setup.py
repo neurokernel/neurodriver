@@ -15,7 +15,7 @@ from setuptools import find_packages
 from setuptools import setup
 
 NAME =               'neurodriver'
-VERSION =            '0.3.1'
+VERSION =            '0.3.2'
 AUTHOR =             'Neurokernel Development Team'
 AUTHOR_EMAIL =       'neurokernel-dev@columbia.edu'
 URL =                'https://github.com/neurokernel/neurodriver/'
@@ -59,6 +59,6 @@ if __name__ == "__main__":
         packages = PACKAGES,
         include_package_data = True,
         install_requires = [
-            'neurokernel >= 0.3.0',
+            'neurokernel >= 0.3.1',
         ],
         )
