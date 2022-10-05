@@ -88,8 +88,8 @@ update(int num_comps, %(dt)s dt, int nsteps,
             dV = compute_V(V, n, I, V1, V2,
                            offset, V_L, V_Ca, V_K,
                            g_L, g_K, g_Ca);
-            V += dV * dt;
-            n += dn * dt;
+            V += dV * dt * 1000;
+            n += dn * dt * 1000;
         }
 
         g_V[k] = V;
