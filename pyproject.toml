@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neurodriver"
+version = "0.3.2"
+description = "LPU class with support for various neuron and synapse models"
+license = { text = "BSD" }
+authors = [{ name = "Neurokernel Development Team", email = "neurokernel-dev@columbia.edu" }]
+maintainers = [{ name = "Neurokernel Development Team", email = "neurokernel-dev@columbia.edu" }]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: BSD License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Software Development"
+]
+dependencies = [
+  "neurokernel>=0.3.1"
+]
+
+[project.urls]
+Homepage = "https://github.com/neurokernel/neurodriver/"
+Download = "https://github.com/neurokernel/neurodriver/"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["neurodriver*"]
